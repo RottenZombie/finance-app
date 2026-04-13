@@ -1,0 +1,33 @@
+name: Build EXE
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Repo çek
+      uses: actions/checkout@v3
+
+    - name: Python kur
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Kütüphaneler
+      run: |
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: EXE oluştur
+      run: |
+        pyinstaller --onefile --windowed -n FinanceTerminal main.py
+
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: FinanceTerminal
+        path: dist/FinanceTerminal.exe
