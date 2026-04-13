@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QThread, Signal
 
 
-VERSION = "1.8.1"
+VERSION = "2.1.0"
 API = "https://open.er-api.com/v6/latest"
 
 
@@ -18,21 +18,31 @@ def get_all_rates():
     try:
         data = requests.get(f"{API}/USD", timeout=5).json()
         rates = data.get("rates", {})
-
         usd_try = rates.get("TRY")
 
         return {
             "USD": usd_try,
             "EUR": usd_try / rates.get("EUR") if rates.get("EUR") else None,
-            "HUF": usd_try / rates.get("HUF") if rates.get("HUF") else None
+            "HUF": usd_try / rates.get("HUF") if rates.get("HUF") else None,
+            "status": "Online"
         }
-    except Exception as e:
-        print("API ERROR:", e)
-        return {"USD": None, "EUR": None, "HUF": None}
+    except:
+        return {"USD": None, "EUR": None, "HUF": None, "status": "Offline"}
+
+
+def get_metal_prices():
+    try:
+        gold = requests.get("https://api.gold-api.com/price/XAU", timeout=5).json()
+        silver = requests.get("https://api.gold-api.com/price/XAG", timeout=5).json()
+
+        return gold.get("price"), silver.get("price")
+    except:
+        return None, None
+
 
 def safe_format(val, digits=2):
     try:
-        return f"{val:.{digits}f}" if val else "N/A"
+        return f"{val:.{digits}f}" if val is not None else "N/A"
     except:
         return "N/A"
 
@@ -42,8 +52,7 @@ class Worker(QThread):
     result = Signal(dict)
 
     def run(self):
-        data = get_all_rates()
-        self.result.emit(data)
+        self.result.emit(get_all_rates())
 
 
 # ---------------- CARD ----------------
@@ -57,15 +66,14 @@ class Card(QFrame):
 
         layout.addWidget(self.title)
         layout.addWidget(self.value)
-
         self.setLayout(layout)
 
     def apply_theme(self, theme):
-        if theme == "Neon":
+        if theme == "Blue":
             self.setStyleSheet("""
                 QFrame {
-                    background-color: #0f1020;
-                    border: 1px solid #00f5ff;
+                    background-color: #1a1f2e;
+                    border: 1px solid #3a86ff;
                     border-radius: 10px;
                     padding: 10px;
                 }
@@ -74,7 +82,7 @@ class Card(QFrame):
         else:
             self.setStyleSheet("""
                 QFrame {
-                    background-color: #333;
+                    background-color: #2a2a2a;
                     border-radius: 10px;
                     padding: 10px;
                 }
@@ -106,15 +114,25 @@ class Metals(QWidget):
         layout.addWidget(btn)
         layout.addWidget(self.result)
 
+        note = QLabel("*Hesaplama ons üzerinden USD bazlı yapılır. Sonuçta küçük farklılıklar olabilir.")
+        note.setStyleSheet("font-size: 10px; color: gray;")
+        note.setWordWrap(True)
+
+        layout.addWidget(note)
+
         self.setLayout(layout)
 
         self.gold_rate = 0
         self.silver_rate = 0
+        self.precision = 2
 
     def set_rates(self, gold_oz, silver_oz):
         GRAM = 31.1035
         self.gold_rate = (gold_oz / GRAM) if gold_oz else 0
         self.silver_rate = (silver_oz / GRAM) if silver_oz else 0
+
+    def set_precision(self, p):
+        self.precision = p
 
     def calc(self):
         try:
@@ -125,12 +143,11 @@ class Metals(QWidget):
             silver_total = silver_g * self.silver_rate
 
             self.result.setText(
-                f"Altın: {safe_format(gold_total)} TRY | "
-                f"Gümüş: {safe_format(silver_total)} TRY | "
-                f"Toplam: {safe_format(gold_total + silver_total)} TRY"
+                f"Altın: {safe_format(gold_total, self.precision)} TRY | "
+                f"Gümüş: {safe_format(silver_total, self.precision)} TRY | "
+                f"Toplam: {safe_format(gold_total + silver_total, self.precision)} TRY"
             )
-        except Exception as e:
-            print(e)
+        except:
             self.result.setText("Hata")
 
 
@@ -168,9 +185,13 @@ class Portfolio(QWidget):
         self.setLayout(layout)
 
         self.rates = {}
+        self.precision = 2
 
     def set_rates(self, r):
         self.rates = r
+
+    def set_precision(self, p):
+        self.precision = p
 
     def calc(self):
         try:
@@ -178,21 +199,18 @@ class Portfolio(QWidget):
             eur = float(self.eur.text() or 0)
             tr = float(self.try_in.text() or 0)
 
-            usd_rate = self.rates.get("USD") or 0
-            eur_rate = self.rates.get("EUR") or 0
+            total_try = (usd * (self.rates.get("USD") or 0)) + (eur * (self.rates.get("EUR") or 0)) + tr
 
-            total_try = (usd * usd_rate) + (eur * eur_rate) + tr
+            sel = self.rate_box.currentText()
+            rate = self.rates.get(sel)
 
-            selected = self.rate_box.currentText()
-            sel_rate = self.rates.get(selected)
-
-            converted = total_try / sel_rate if sel_rate else 0
+            converted = total_try / rate if rate else 0
 
             self.result.setText(
-                f"{safe_format(total_try)} TRY | {safe_format(converted)} {selected}"
+                f"{safe_format(total_try, self.precision)} TRY | "
+                f"{safe_format(converted, self.precision)} {sel}"
             )
-        except Exception as e:
-            print(e)
+        except:
             self.result.setText("Hata")
 
 
@@ -202,31 +220,50 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
 
         self.setWindowTitle("Ayarlar")
-        self.setFixedSize(250, 180)
+        self.setFixedSize(280, 260)
 
         layout = QVBoxLayout()
 
         self.theme = QComboBox()
-        self.theme.addItems(["Neon", "Dark"])
+        self.theme.addItems(["Dark", "Blue"])
         self.theme.setCurrentText(parent.theme)
+
+        self.start_tab = QComboBox()
+        self.start_tab.addItems(["Currency", "Portfolio", "Madenler"])
+
+        self.precision = QComboBox()
+        self.precision.addItems(["2", "3", "4"])
+        self.precision.setCurrentText(str(parent.precision))
+
+        self.api_status = QLabel(f"API Durumu: {parent.api_status}")
 
         btn = QPushButton("Uygula")
         btn.clicked.connect(self.apply)
 
         layout.addWidget(QLabel(f"Version: {VERSION}"))
-        layout.addWidget(QLabel(f"API: {API}"))
         layout.addWidget(QLabel("Tema"))
         layout.addWidget(self.theme)
+        layout.addWidget(QLabel("Başlangıç Sekmesi"))
+        layout.addWidget(self.start_tab)
+        layout.addWidget(QLabel("Ondalık Hassasiyet"))
+        layout.addWidget(self.precision)
+        layout.addWidget(self.api_status)
         layout.addWidget(btn)
 
         self.setLayout(layout)
 
     def apply(self):
-        self.parent().set_theme(self.theme.currentText())
+        p = self.parent()
+        p.set_theme(self.theme.currentText())
+        p.set_precision(int(self.precision.currentText()))
+
+        tab_map = {"Currency": 0, "Portfolio": 1, "Madenler": 2}
+        p.tabs.setCurrentIndex(tab_map[self.start_tab.currentText()])
+
         self.close()
 
 
-# ---------------- MAIN APP ----------------
+# ---------------- MAIN ----------------
 class App(QWidget):
     def __init__(self):
         super().__init__()
@@ -234,11 +271,13 @@ class App(QWidget):
         self.setWindowTitle("Finance Terminal")
         self.setGeometry(200, 200, 460, 520)
 
-        self.theme = "Neon"
+        self.theme = "Dark"
+        self.precision = 2
+        self.api_status = "..."
 
         self.tabs = QTabWidget()
 
-        # TAB 1
+        # TAB1
         self.tab1 = QWidget()
         l1 = QVBoxLayout()
 
@@ -267,7 +306,6 @@ class App(QWidget):
 
         self.tab1.setLayout(l1)
 
-        # TABS
         self.tab2 = Portfolio()
         self.tab3 = Metals()
 
@@ -279,36 +317,46 @@ class App(QWidget):
         layout.addWidget(self.tabs)
         self.setLayout(layout)
 
-        self.worker = None
-
         self.apply_theme()
         self.update()
 
     def open_settings(self):
-        dlg = SettingsDialog(self)
-        dlg.exec()
+        SettingsDialog(self).exec()
 
-    def set_theme(self, theme):
-        self.theme = theme
+    def set_theme(self, t):
+        self.theme = t
         self.apply_theme()
 
+    def set_precision(self, p):
+        self.precision = p
+        self.tab2.set_precision(p)
+        self.tab3.set_precision(p)
+
     def apply_theme(self):
-        if self.theme == "Neon":
+        if self.theme == "Dark":
             self.setStyleSheet("""
                 QWidget {
-                    background-color: #0a0a0f;
+                    background-color: #121212;
                     color: white;
                 }
                 QPushButton {
-                    background-color: #00f5ff;
-                    color: black;
+                    background-color: #2a2a2a;
+                    color: white;
+                    border-radius: 6px;
+                    padding: 5px;
                 }
             """)
         else:
             self.setStyleSheet("""
                 QWidget {
-                    background-color: #f0f0f0;
-                    color: black;
+                    background-color: #0f172a;
+                    color: white;
+                }
+                QPushButton {
+                    background-color: #3a86ff;
+                    color: white;
+                    border-radius: 6px;
+                    padding: 5px;
                 }
             """)
 
@@ -317,41 +365,28 @@ class App(QWidget):
         self.huf.apply_theme(self.theme)
 
     def update(self):
-        if self.worker and self.worker.isRunning():
-            return
-
         self.worker = Worker()
         self.worker.result.connect(self.on_data)
         self.worker.start()
 
     def on_data(self, d):
-        mode = self.mode_box.currentText()
+        self.api_status = d.get("status")
 
-        if mode == "Normal":
-            self.usd.value.setText(f"{safe_format(d['USD'])} TRY")
-            self.eur.value.setText(f"{safe_format(d['EUR'])} TRY")
-            self.huf.value.setText(f"{safe_format(d['HUF'])} TRY")
-        else:
-            self.usd.value.setText(
-                f"{safe_format(1/d['USD'],4) if d['USD'] else 'N/A'} USD"
-            )
-            self.eur.value.setText(
-                f"{safe_format(1/d['EUR'],4) if d['EUR'] else 'N/A'} EUR"
-            )
-            self.huf.value.setText(
-                f"{safe_format(1/d['HUF'],4) if d['HUF'] else 'N/A'} HUF"
-            )
+        self.usd.value.setText(f"{safe_format(d['USD'], self.precision)} TRY")
+        self.eur.value.setText(f"{safe_format(d['EUR'], self.precision)} TRY")
+        self.huf.value.setText(f"{safe_format(d['HUF'], self.precision)} TRY")
 
         self.tab2.set_rates(d)
 
-        self.tab3.set_rates(
-            gold_oz=70000,
-            silver_oz=800
-        )
+        gold_usd, silver_usd = get_metal_prices()
+        usd_try = d.get("USD")
 
-        self.last.setText(
-            f"Güncelleme: {datetime.now().strftime('%H:%M:%S')}"
-        )
+        gold_try = gold_usd * usd_try if gold_usd and usd_try else 0
+        silver_try = silver_usd * usd_try if silver_usd and usd_try else 0
+
+        self.tab3.set_rates(gold_try, silver_try)
+
+        self.last.setText(f"Güncelleme: {datetime.now().strftime('%H:%M:%S')}")
 
 
 app = QApplication(sys.argv)
