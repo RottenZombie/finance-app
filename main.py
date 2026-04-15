@@ -52,11 +52,26 @@ class Worker(QThread):
     result = Signal(dict)
 
     def run(self):
-        self.result.emit(get_all_rates())
+        data = get_all_rates()
+        gold, silver = get_metal_prices()
+
+        data["gold"] = gold
+        data["silver"] = silver
+
+        self.result.emit(data)
 
 
 # ---------------- CARD ----------------
 class Card(QFrame):
+    from PySide6.QtCore import QPropertyAnimation
+
+    def flash(self):
+        self.anim = QPropertyAnimation(self, b"windowOpacity")
+        self.anim.setDuration(200)
+        self.anim.setStartValue(0.6)
+        self.anim.setEndValue(1.0)
+        self.anim.start()
+
     def __init__(self, title):
         super().__init__()
         layout = QVBoxLayout()
@@ -88,6 +103,17 @@ class Card(QFrame):
                 }
                 QLabel { color: white; }
             """)
+
+    from PySide6.QtWidgets import QGraphicsDropShadowEffect
+
+    def highlight(self):
+        effect = QGraphicsDropShadowEffect(self)
+        effect.setBlurRadius(20)
+        effect.setXOffset(0)
+        effect.setYOffset(0)
+        effect.setColor("#3a86ff")
+
+        self.setGraphicsEffect(effect)
 
 
 # ---------------- METALS ----------------
@@ -287,6 +313,7 @@ class App(QWidget):
 
         self.mode_box = QComboBox()
         self.mode_box.addItems(["Normal", "Ters"])
+        self.mode_box.currentIndexChanged.connect(self.refresh_ui_only)
 
         self.last = QLabel("Son güncelleme: -")
 
@@ -320,6 +347,20 @@ class App(QWidget):
         self.apply_theme()
         self.update()
 
+    def refresh_ui_only(self):
+        if hasattr(self, "last_data"):
+            self.on_data(self.last_data)
+
+            # animasyon
+            self.usd.flash()
+            self.eur.flash()
+            self.huf.flash()
+
+            # glow
+            self.usd.highlight()
+            self.eur.highlight()
+            self.huf.highlight()
+
     def open_settings(self):
         SettingsDialog(self).exec()
 
@@ -335,28 +376,22 @@ class App(QWidget):
     def apply_theme(self):
         if self.theme == "Dark":
             self.setStyleSheet("""
-                QWidget {
-                    background-color: #121212;
-                    color: white;
-                }
-                QPushButton {
-                    background-color: #2a2a2a;
-                    color: white;
-                    border-radius: 6px;
-                    padding: 5px;
+                QWidget { background:#121212; color:white; }
+                QPushButton { background:#2a2a2a; color:white; }
+                QLineEdit {
+                    background:#2a2a2a;
+                    color:white;
+                    border:1px solid #444;
                 }
             """)
         else:
             self.setStyleSheet("""
-                QWidget {
-                    background-color: #0f172a;
-                    color: white;
-                }
-                QPushButton {
-                    background-color: #3a86ff;
-                    color: white;
-                    border-radius: 6px;
-                    padding: 5px;
+                QWidget { background:#0f172a; color:white; }
+                QPushButton { background:#3a86ff; color:white; }
+                QLineEdit {
+                    background:#1a1f2e;
+                    color:white;
+                    border:1px solid #3a86ff;
                 }
             """)
 
@@ -365,24 +400,48 @@ class App(QWidget):
         self.huf.apply_theme(self.theme)
 
     def update(self):
+        if hasattr(self, "worker") and self.worker.isRunning():
+            return  # thread çalışıyorsa yenisini başlatma
+
         self.worker = Worker()
         self.worker.result.connect(self.on_data)
         self.worker.start()
 
     def on_data(self, d):
+        self.last_data = d
         self.api_status = d.get("status")
+        
+        mode = self.mode_box.currentText()
 
-        self.usd.value.setText(f"{safe_format(d['USD'], self.precision)} TRY")
-        self.eur.value.setText(f"{safe_format(d['EUR'], self.precision)} TRY")
-        self.huf.value.setText(f"{safe_format(d['HUF'], self.precision)} TRY")
+        if mode == "Ters":
+            usd = 1 / d['USD'] if d['USD'] else None
+            eur = 1 / d['EUR'] if d['EUR'] else None
+            huf = 1 / d['HUF'] if d['HUF'] else None
+
+            self.usd.title.setText("TRY/USD")
+            self.eur.title.setText("TRY/EUR")
+            self.huf.title.setText("TRY/HUF")
+
+            self.usd.value.setText(f"{safe_format(usd, self.precision)} USD")
+            self.eur.value.setText(f"{safe_format(eur, self.precision)} EUR")
+            self.huf.value.setText(f"{safe_format(huf, self.precision)} HUF")
+        
+        else:
+            self.usd.title.setText("USD/TRY")
+            self.eur.title.setText("EUR/TRY")
+            self.huf.title.setText("HUF/TRY")
+
+            self.usd.value.setText(f"{safe_format(d['USD'], self.precision)} TRY")
+            self.eur.value.setText(f"{safe_format(d['EUR'], self.precision)} TRY")
+            self.huf.value.setText(f"{safe_format(d['HUF'], self.precision)} TRY")
+
 
         self.tab2.set_rates(d)
 
-        gold_usd, silver_usd = get_metal_prices()
         usd_try = d.get("USD")
 
-        gold_try = gold_usd * usd_try if gold_usd and usd_try else 0
-        silver_try = silver_usd * usd_try if silver_usd and usd_try else 0
+        gold_try = d.get("gold") * usd_try if d.get("gold") and usd_try else 0
+        silver_try = d.get("silver") * usd_try if d.get("silver") and usd_try else 0
 
         self.tab3.set_rates(gold_try, silver_try)
 
