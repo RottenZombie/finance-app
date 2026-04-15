@@ -1,23 +1,21 @@
-name: Python EXE Build
+name: Windows EXE Build
 
 on:
   push:
-    branches: [ "main" ] # Hangi branch'e push yapınca çalışsın?
-  pull_request:
-    branches: [ "main" ]
+    branches: [ "main" ] # Burası 'main' mi 'master' mı kontrol et, gerekirse değiştir.
 
 jobs:
   build:
-    runs-on: windows-latest # Kritik nokta: Windows üzerinde derleme yapıyoruz
+    runs-on: windows-latest
 
     steps:
-    - name: Depoyu Klonla
+    - name: Kodları Klonla
       uses: actions/checkout@v4
 
     - name: Python Kur
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10' # Kullandığın sürümü buraya yazabilirsin
+        python-version: '3.10'
 
     - name: Bağımlılıkları Yükle
       run: |
@@ -27,11 +25,12 @@ jobs:
 
     - name: EXE Oluştur
       run: |
-        # 'ana_dosyan.py' kısmını kendi ana dosya adınla değiştir
-        pyinstaller --onefile --windowed main.py
+        # --paths . sayesinde core, features, ui klasörlerini otomatik görür
+        # --add-data "config.json;." eğer config.json EXE'nin yanında lazımsa ekledim
+        pyinstaller --onefile --windowed --paths . --add-data "config.json;." app.py
 
-    - name: EXE Dosyasını Kaydet (Artifact)
+    - name: EXE'yi Kaydet
       uses: actions/upload-artifact@v4
       with:
-        name: Windows-Executable
+        name: FinanceApp-Windows
         path: dist/*.exe
