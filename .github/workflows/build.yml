@@ -1,0 +1,35 @@
+name: Build EXE
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Repo indir
+        uses: actions/checkout@v3
+
+      - name: Python kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Kütüphaneleri kur
+        run: |
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: EXE oluştur
+        run: |
+          pyinstaller --onefile --windowed --name FinanceTerminal app.py
+
+      - name: Release yükle
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/FinanceTerminal.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
