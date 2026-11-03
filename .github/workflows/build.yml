@@ -1,36 +1,57 @@
-name: Windows EXE Build
+
+name: FinanceTerminal Windows EXE
 
 on:
   push:
-    branches: [ "main" ] # Burası 'main' mi 'master' mı kontrol et, gerekirse değiştir.
+    branches:
+      - main
+      - bist-ai-2.2.1
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-    - name: Kodları Klonla
-      uses: actions/checkout@v4
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
 
-    - name: Python Kur
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Python 3.14 kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
 
-    - name: Bağımlılıkları Yükle
-      run: |
-        python -m pip install --upgrade pip
-        pip install pyinstaller
-        if (Test-Path requirements.txt) { pip install -r requirements.txt }
+      - name: Bağımlılıkları yükle
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
 
-    - name: EXE Oluştur
-      run: |
-        # --paths . sayesinde core, features, ui klasörlerini otomatik görür
-        # --add-data "config.json;." eğer config.json EXE'nin yanında lazımsa ekledim
-        pyinstaller --onefile --windowed --paths . --add-data "config.json;." app.py
+      - name: Testleri çalıştır
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -v
 
-    - name: EXE'yi Kaydet
-      uses: actions/upload-artifact@v4
-      with:
-        name: FinanceApp-Windows
-        path: dist/*.exe
+      - name: Windows EXE oluştur
+        run: >-
+          python -m PyInstaller
+          --noconfirm
+          --clean
+          --onefile
+          --windowed
+          --name FinanceTerminal
+          --paths .
+          --add-data "config.json;."
+          app.py
+
+      - name: EXE dosyasını sakla
+        uses: actions/upload-artifact@v4
+        with:
+          name: FinanceTerminal-Windows-x64
+          path: dist/FinanceTerminal.exe
+          if-no-files-found: error
+          retention-days: 30
