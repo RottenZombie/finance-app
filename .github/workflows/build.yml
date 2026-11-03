@@ -1,10 +1,8 @@
-
-name: FinanceTerminal Windows EXE
+name: FinanceTerminal 2.2.1 BIST AI - Windows EXE
 
 on:
   push:
     branches:
-      - main
       - bist-ai-2.2.1
   workflow_dispatch:
 
@@ -13,45 +11,68 @@ permissions:
 
 jobs:
   build:
+    name: Build BIST AI Windows x64
     runs-on: windows-latest
 
     steps:
-      - name: Kaynak kodu al
+      - name: Checkout BIST AI branch
         uses: actions/checkout@v4
 
-      - name: Python 3.14 kur
+      - name: Set up Python 3.14
         uses: actions/setup-python@v5
         with:
           python-version: '3.14'
-          cache: 'pip'
+          cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Bağımlılıkları yükle
+      - name: Install dependencies
+        shell: pwsh
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Testleri çalıştır
+      - name: Confirm BIST modules are present
+        shell: pwsh
+        run: |
+          python -c "from ui.main_window import MainWindow; from features.bist.portfolio_tab import BistPortfolioTab; print('BIST AI imports OK')"
+
+      - name: Run tests
         env:
           QT_QPA_PLATFORM: offscreen
+        shell: pwsh
         run: python -m unittest discover -s tests -v
 
-      - name: Windows EXE oluştur
-        run: >-
-          python -m PyInstaller
-          --noconfirm
-          --clean
-          --onefile
-          --windowed
-          --name FinanceTerminal
-          --paths .
-          --add-data "config.json;."
-          app.py
+      - name: Build FinanceTerminal EXE
+        shell: pwsh
+        run: |
+          python -m PyInstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --windowed `
+            --name FinanceTerminal `
+            --paths . `
+            --collect-submodules features.bist `
+            --add-data "config.json;." `
+            app.py
 
-      - name: EXE dosyasını sakla
+      - name: Write build information
+        shell: pwsh
+        run: |
+          @"
+          Application: FinanceTerminal
+          Application version: 2.2.1
+          Branch: $env:GITHUB_REF_NAME
+          Commit: $env:GITHUB_SHA
+          BIST AI: included
+          "@ | Set-Content -Path dist/build-info.txt -Encoding UTF8
+
+      - name: Upload versioned EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FinanceTerminal-Windows-x64
-          path: dist/FinanceTerminal.exe
+          name: FinanceTerminal-2.2.1-BIST-AI-Windows-x64
+          path: |
+            dist/FinanceTerminal.exe
+            dist/build-info.txt
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
