@@ -5,7 +5,7 @@ FILE = "config.json"
 
 
 DEFAULT = {
-    "theme": "White",
+    "theme": "Blue",
     "precision": 2,
     "start_tab": 0
 }
