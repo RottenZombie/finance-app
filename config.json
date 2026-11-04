@@ -1,5 +1,6 @@
 {
-    "theme": "Blue",
+    "theme": "System",
     "precision": 2,
-    "start_tab": 0
+    "start_tab": 0,
+    "summary_tab_migrated": true
 }

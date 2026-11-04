@@ -129,10 +129,25 @@ class BistDatabase:
         return [dict(row) for row in rows]
 
     def delete_holding(self, symbol: object) -> bool:
-        ticker = normalize_symbol(symbol)
+        return self.delete_holdings([symbol]) > 0
+
+    def delete_holdings(self, symbols: list[object] | None = None) -> int:
+        """Delete selected BIST tickers, or the entire BIST portfolio if None."""
         with self._connection() as conn:
-            cursor = conn.execute("DELETE FROM bist_holdings WHERE symbol = ?", (ticker,))
-            return cursor.rowcount > 0
+            if symbols is None:
+                cursor = conn.execute("DELETE FROM bist_holdings")
+            else:
+                tickers = list(dict.fromkeys(normalize_symbol(symbol) for symbol in symbols))
+                if not tickers:
+                    return 0
+                placeholders = ",".join("?" for _ in tickers)
+                cursor = conn.execute(
+                    f"DELETE FROM bist_holdings WHERE symbol IN ({placeholders})", tickers
+                )
+            return max(cursor.rowcount, 0)
+
+    def delete_all(self) -> int:
+        return self.delete_holdings(None)
 
     def summary(self) -> dict[str, Any]:
         rows = self.list_holdings()

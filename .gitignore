@@ -4,3 +4,14 @@ build/
 __pycache__/
 venv/
 .env
+
+# Local BIST portfolio data (never commit personal holdings)
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# Test and local tooling output
+.pytest_cache/
+.coverage

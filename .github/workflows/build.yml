@@ -1,4 +1,4 @@
-name: FinanceTerminal 2.2.1 BIST AI - Windows EXE
+name: FinanceTerminal 2.2.7-dev - Windows EXE
 
 on:
   push:
@@ -11,11 +11,11 @@ permissions:
 
 jobs:
   build:
-    name: Build BIST AI Windows x64
+    name: Build FinanceTerminal 2.2.7-dev Windows x64
     runs-on: windows-latest
 
     steps:
-      - name: Checkout BIST AI branch
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Set up Python 3.14
@@ -31,10 +31,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Confirm BIST modules are present
+      - name: Verify application imports
         shell: pwsh
         run: |
-          python -c "from ui.main_window import MainWindow; from features.bist.portfolio_tab import BistPortfolioTab; print('BIST AI imports OK')"
+          python -c "from ui.main_window import MainWindow; from features.bist.portfolio_tab import BistPortfolioTab; from features.investment_store import InvestmentStore; from features.investment_panel import InvestmentPanel; print('FinanceTerminal imports OK')"
 
       - name: Run tests
         env:
@@ -51,9 +51,11 @@ jobs:
             --onefile `
             --windowed `
             --name FinanceTerminal `
+            --icon assets/finance_terminal.ico `
             --paths . `
             --collect-submodules features.bist `
             --add-data "config.json;." `
+            --add-data "assets;assets" `
             app.py
 
       - name: Write build information
@@ -61,16 +63,27 @@ jobs:
         run: |
           @"
           Application: FinanceTerminal
-          Application version: 2.2.1
+          Application version: 2.2.7-dev
           Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
           BIST AI: included
+          Application icon: included
+          Combined portfolio import: included
+          Portfolio currency holdings: included
+          Metals holdings: included
+          Multi-select deletion: included
+          Delete all holdings: included
+          Summary profit and loss: included
+          BIST notes column: included
+          Resizable table columns: included
+          Last quote update timestamps: included
+          Optional system tray: included
           "@ | Set-Content -Path dist/build-info.txt -Encoding UTF8
 
       - name: Upload versioned EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FinanceTerminal-2.2.1-BIST-AI-Windows-x64
+          name: FinanceTerminal-2.2.7-Windows-x64
           path: |
             dist/FinanceTerminal.exe
             dist/build-info.txt

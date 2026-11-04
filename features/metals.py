@@ -1,25 +1,27 @@
+from decimal import Decimal
+
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox
 
-GRAM_PER_OZ = 31.1035
+from features.investment_panel import InvestmentPanel
+
+GRAM_PER_OZ = Decimal("31.1035")
 
 
 class Metals(QWidget):
+    """Metal value calculator plus persistent gold/silver purchase records."""
+
     def __init__(self):
         super().__init__()
 
         layout = QVBoxLayout(self)
 
-        # INPUTS
         self.gold_input = QLineEdit()
         self.gold_input.setPlaceholderText("Altın (gram)")
-
         self.silver_input = QLineEdit()
         self.silver_input.setPlaceholderText("Gümüş (gram)")
 
-        # OUTPUT
         self.out_currency = QComboBox()
         self.out_currency.addItems(["TRY", "USD", "EUR"])
-
         self.result = QLabel("Sonuç: -")
 
         btn = QPushButton("Hesapla")
@@ -27,57 +29,72 @@ class Metals(QWidget):
 
         layout.addWidget(QLabel("Altın (gram)"))
         layout.addWidget(self.gold_input)
-
         layout.addWidget(QLabel("Gümüş (gram)"))
         layout.addWidget(self.silver_input)
-
         layout.addWidget(QLabel("Çıktı"))
         layout.addWidget(self.out_currency)
-
         layout.addWidget(btn)
         layout.addWidget(self.result)
 
-        # API DATA
         self.gold_usd_oz = 0
         self.silver_usd_oz = 0
         self.usd_try = 0
 
-    # API'den gelen ham veri
-    def set_rates(self, gold_usd_oz, silver_usd_oz, usd_try):
+        self.investment_panel = InvestmentPanel(
+            asset_group="metals",
+            assets={
+                "XAU": ("Altın", "gr"),
+                "XAG": ("Gümüş", "gr"),
+            },
+            quantity_label="Miktar (gr)",
+            title="Altın / Gümüş Alım Kayıtları",
+            export_filename="FinanceTerminal_Metal_Portfoyu.xlsx",
+        )
+        layout.addWidget(self.investment_panel)
+
+    def set_rates(self, gold_usd_oz, silver_usd_oz, usd_try, rates_updated_at=None, rates_status=None):
         self.gold_usd_oz = gold_usd_oz or 0
         self.silver_usd_oz = silver_usd_oz or 0
         self.usd_try = usd_try or 0
+
+        prices = {}
+        try:
+            gold = Decimal(str(self.gold_usd_oz))
+            usd = Decimal(str(self.usd_try))
+            prices["XAU"] = (gold / GRAM_PER_OZ) * usd if gold > 0 and usd > 0 else None
+        except Exception:
+            prices["XAU"] = None
+        try:
+            silver = Decimal(str(self.silver_usd_oz))
+            usd = Decimal(str(self.usd_try))
+            prices["XAG"] = (silver / GRAM_PER_OZ) * usd if silver > 0 and usd > 0 else None
+        except Exception:
+            prices["XAG"] = None
+        self.investment_panel.set_prices(
+            prices, rates_updated_at=rates_updated_at, rates_status=rates_status
+        )
 
     def calc(self):
         try:
             gold_g = float(self.gold_input.text() or 0)
             silver_g = float(self.silver_input.text() or 0)
 
-            # gram → ons
-            gold_oz = gold_g / GRAM_PER_OZ
-            silver_oz = silver_g / GRAM_PER_OZ
-
-            # USD değer
+            gold_oz = gold_g / float(GRAM_PER_OZ)
+            silver_oz = silver_g / float(GRAM_PER_OZ)
             gold_usd = gold_oz * self.gold_usd_oz
             silver_usd = silver_oz * self.silver_usd_oz
-
             total_usd = gold_usd + silver_usd
             total_try = total_usd * self.usd_try
 
             selected = self.out_currency.currentText()
-
             if selected == "TRY":
                 result = total_try
-
             elif selected == "USD":
                 result = total_usd
+            else:
+                # Retain the existing approximate EUR conversion behavior.
+                result = total_usd * 0.92
 
-            elif selected == "EUR":
-                result = total_usd * 0.92  # yaklaşık dönüşüm
-
-            self.result.setText(
-                f"{total_try:.2f} TRY | {result:.2f} {selected}"
-            )
-
-        except Exception as e:
-            self.result.setText(f"Hata: {e}")
+            self.result.setText(f"{total_try:.2f} TRY | {result:.2f} {selected}")
+        except Exception as exc:
+            self.result.setText(f"Hata: {exc}")

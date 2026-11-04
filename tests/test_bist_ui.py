@@ -13,7 +13,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QAbstractItemView, QHeaderView
     from features.bist.database import BistDatabase
     from features.bist.portfolio_tab import BistPortfolioTab
     PYSIDE_AVAILABLE = True
@@ -40,11 +40,20 @@ class BistUiSmokeTests(unittest.TestCase):
 
             # Exercise a refresh after inserting a holding. This verifies that
             # both QLabel wrappers still refer to live Qt objects.
-            database.upsert_holding("ASELS", "10", "75,50")
+            database.upsert_holding("ASELS", "10", "75,50", notes="Uzun vadeli takip")
             tab.refresh_table()
             self.assertEqual(tab.table.rowCount(), 1)
             self.assertEqual(tab.count_value.text(), "1")
             self.assertEqual(tab.cost_value.text(), "755,00 ₺")
+            self.assertEqual(tab.table.selectionMode(), QAbstractItemView.SelectionMode.ExtendedSelection)
+            self.assertEqual(tab.table.columnCount(), 8)
+            self.assertEqual(tab.table.item(0, 6).text(), "Uzun vadeli takip")
+            self.assertEqual(
+                tab.table.horizontalHeader().sectionResizeMode(1),
+                QHeaderView.ResizeMode.Interactive,
+            )
+            self.assertEqual(tab.clear_button.text(), "Formu Temizle")
+            self.assertEqual(tab.delete_all_button.text(), "Tüm Kayıtları Sil")
 
             tab.close()
 

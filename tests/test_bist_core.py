@@ -31,6 +31,17 @@ class BistCoreTests(unittest.TestCase):
             self.assertTrue(db.delete_holding("THYAO"))
             self.assertEqual(len(db.list_holdings()), 1)
 
+    def test_delete_multiple_and_all_holdings(self):
+        with tempfile.TemporaryDirectory() as temp:
+            db = BistDatabase(Path(temp) / "test.db")
+            db.upsert_holding("ASELS", "100", "75,50")
+            db.upsert_holding("THYAO", "20", "250")
+            db.upsert_holding("BIMAS", "5", "500")
+            self.assertEqual(db.delete_holdings(["ASELS", "THYAO"]), 2)
+            self.assertEqual([row["symbol"] for row in db.list_holdings()], ["BIMAS"])
+            self.assertEqual(db.delete_all(), 1)
+            self.assertEqual(db.list_holdings(), [])
+
     def test_excel_export_import_round_trip(self):
         with tempfile.TemporaryDirectory() as temp:
             db = BistDatabase(Path(temp) / "original.db")

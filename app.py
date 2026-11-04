@@ -1,14 +1,35 @@
 import sys
+import ctypes
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from core.resources import resource_path
 from ui.main_window import MainWindow
 
+
+def set_windows_app_user_model_id() -> None:
+    """Give Windows a stable app identity so taskbar grouping uses our icon."""
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "RottenZombie.FinanceTerminal"
+            )
+        except (AttributeError, OSError):
+            # Window and executable icons are still set below as a fallback.
+            pass
+
+
+set_windows_app_user_model_id()
 app = QApplication(sys.argv)
 app.setApplicationName("FinanceTerminal")
+app.setApplicationDisplayName("FinanceTerminal")
+app.setQuitOnLastWindowClosed(False)
+app.setWindowIcon(QIcon(str(resource_path("assets/finance_terminal.png"))))
 
 w = MainWindow()
+w.setWindowIcon(QIcon(str(resource_path("assets/finance_terminal.png"))))
 
-# FinanceTerminal 2.2.0: the BIST tab needs a wider workspace.
+# FinanceTerminal 2.2.7-dev: table usability, update labels, and optional system tray.
 w.resize(1100, 760)
 w.show()
 

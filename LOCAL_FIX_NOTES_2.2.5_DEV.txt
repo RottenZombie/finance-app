@@ -1,0 +1,11 @@
+FinanceTerminal 2.2.5-dev – local patch notes
+
+- Fixed QIcon import: PySide6.QtGui (not QtWidgets).
+- Replaced application PNG/ICO/SVG assets with the exact artwork supplied by the user (108x110 source image; transparent pure-black outside pixels only).
+- Fixed workbook file-handle cleanup in the Excel valuation test; both openpyxl workbooks are explicitly closed.
+- Kept the combined portfolio import/export and existing feature implementation unchanged.
+
+Validation performed:
+- python -m compileall -q . : passed
+- python -m unittest discover -s tests -v : 25 tests run, 22 passed, 3 skipped because PySide6 is not installed in the build container.
+- Qt UI smoke tests still need to be exercised on the user Windows environment.

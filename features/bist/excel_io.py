@@ -10,6 +10,8 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
+from features.export_metadata import add_export_metadata_sheet
+
 
 HEADERS = [
     "Hisse Kodu",
@@ -46,25 +48,31 @@ def read_portfolio_excel(path: str | Path) -> list[dict[str, Any]]:
     source = Path(path)
     workbook = load_workbook(source, read_only=True, data_only=True)
     try:
-        sheet = workbook.active
-        iterator = sheet.iter_rows(values_only=True)
-        headers = next(iterator, None)
-        if not headers:
-            raise ValueError("Excel dosyası boş.")
-
+        sheet = None
         mapping: dict[str, int] = {}
-        for index, header in enumerate(headers):
-            normalised = _normalise_header(header)
-            for field, aliases in ALIASES.items():
-                if normalised in aliases:
-                    mapping[field] = index
+        required = {"symbol", "quantity", "average_cost"}
+        # Combined FinanceTerminal workbooks have Summary as the first sheet.
+        # Scan sheets and select the first one that actually contains BIST columns.
+        for candidate in workbook.worksheets:
+            headers = next(candidate.iter_rows(min_row=1, max_row=1, values_only=True), None)
+            candidate_mapping: dict[str, int] = {}
+            for index, header in enumerate(headers or []):
+                normalised = _normalise_header(header)
+                for field, aliases in ALIASES.items():
+                    if normalised in aliases:
+                        candidate_mapping[field] = index
+                        break
+            if required.issubset(candidate_mapping):
+                sheet = candidate
+                mapping = candidate_mapping
+                if _normalise_header(candidate.title) in {"hissesened", "bistportfoy"}:
                     break
 
-        missing = [field for field in ("symbol", "quantity", "average_cost") if field not in mapping]
-        if missing:
+        if sheet is None:
             names = {"symbol": "Hisse Kodu", "quantity": "Adet", "average_cost": "Ortalama Maliyet"}
-            raise ValueError("Gerekli sütunlar bulunamadı: " + ", ".join(names[item] for item in missing))
+            raise ValueError("Gerekli BIST sütunlarını içeren sayfa bulunamadı: " + ", ".join(names[item] for item in required))
 
+        iterator = sheet.iter_rows(min_row=2, values_only=True)
         results: list[dict[str, Any]] = []
         for row in iterator:
             if not row or all(value is None or str(value).strip() == "" for value in row):
@@ -93,7 +101,10 @@ def read_portfolio_excel(path: str | Path) -> list[dict[str, Any]]:
         workbook.close()
 
 
-def write_portfolio_excel(path: str | Path, holdings: list[dict[str, Any]]) -> None:
+def write_portfolio_excel(
+    path: str | Path, holdings: list[dict[str, Any]], *,
+    rates_updated_at: str | None = None, rates_status: str | None = None
+) -> None:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "BIST Portföy"
@@ -141,5 +152,9 @@ def write_portfolio_excel(path: str | Path, holdings: list[dict[str, Any]]) -> N
     sheet.freeze_panes = "A2"
     sheet.auto_filter.ref = f"A1:G{max(1, len(holdings) + 1)}"
 
+    add_export_metadata_sheet(
+        workbook, rates_updated_at=rates_updated_at, rates_status=rates_status
+    )
+    workbook.active = 0
     workbook.save(path)
     workbook.close()

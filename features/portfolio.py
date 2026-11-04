@@ -1,7 +1,11 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox
 
+from features.investment_panel import InvestmentPanel
+
 
 class Portfolio(QWidget):
+    """Currency calculator plus a persistent foreign-currency investment register."""
+
     def __init__(self):
         super().__init__()
 
@@ -31,20 +35,38 @@ class Portfolio(QWidget):
         layout.addWidget(self.out_currency)
         layout.addWidget(btn)
         layout.addWidget(self.result)
-        
 
         self.rates = {}
+        self.investment_panel = InvestmentPanel(
+            asset_group="currency",
+            assets={
+                "USD": ("ABD Doları", "USD"),
+                "EUR": ("Euro", "EUR"),
+                "HUF": ("Macar Forinti", "HUF"),
+            },
+            quantity_label="Miktar",
+            title="Döviz Alım Kayıtları",
+            export_filename="FinanceTerminal_Doviz_Portfoyu.xlsx",
+        )
+        layout.addWidget(self.investment_panel)
 
-    def set_rates(self, r):
-        self.rates = r
+    def set_rates(self, rates):
+        self.rates = rates or {}
+        self.investment_panel.set_prices(
+            {
+                "USD": self.rates.get("USD"),
+                "EUR": self.rates.get("EUR"),
+                "HUF": self.rates.get("HUF"),
+            },
+            rates_updated_at=self.rates.get("fetched_at"),
+            rates_status=self.rates.get("status"),
+        )
 
     def calc(self):
         try:
             usd = float(self.usd.text() or 0)
             eur = float(self.eur.text() or 0)
             huf = float(self.huf.text() or 0)
-
-            # ⚠️ TRY input varsa al
             try_value = float(self.try_in.text() or 0)
 
             usd_rate = self.rates.get("USD") or 0
@@ -52,26 +74,20 @@ class Portfolio(QWidget):
             huf_rate = self.rates.get("HUF") or 0
 
             total_try = (
-                usd * usd_rate +
-                eur * eur_rate +
-                huf * huf_rate +
-                try_value   # ✅ KRİTİK EKLENTİ
+                usd * usd_rate
+                + eur * eur_rate
+                + huf * huf_rate
+                + try_value
             )
 
             selected = self.out_currency.currentText()
-
             if selected == "USD":
                 result = total_try / usd_rate if usd_rate else 0
-
             elif selected == "EUR":
                 result = total_try / eur_rate if eur_rate else 0
-
-            elif selected == "HUF":
+            else:
                 result = total_try / huf_rate if huf_rate else 0
 
-            self.result.setText(
-                f"{total_try:.2f} TRY | {result:.2f} {selected}"
-            )
-
-        except Exception as e:
-            self.result.setText(f"Hata: {e}")
+            self.result.setText(f"{total_try:.2f} TRY | {result:.2f} {selected}")
+        except Exception as exc:
+            self.result.setText(f"Hata: {exc}")

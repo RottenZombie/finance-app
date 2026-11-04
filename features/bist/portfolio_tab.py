@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -29,6 +29,8 @@ from .utils import format_quantity, format_tl, normalize_symbol, parse_localized
 
 class BistPortfolioTab(QWidget):
     """Local-only BIST holdings tab. Price feeds and AI analysis are later stages."""
+
+    portfolio_changed = Signal()
 
     def __init__(self, parent=None, database: BistDatabase | None = None):
         super().__init__(parent)
@@ -114,42 +116,46 @@ class BistPortfolioTab(QWidget):
         buttons = QHBoxLayout()
         self.save_button = QPushButton("Ekle / Güncelle")
         self.save_button.clicked.connect(self.save_holding)
-        self.clear_button = QPushButton("Formu temizle")
-        self.clear_button.clicked.connect(self.clear_form)
-        self.delete_button = QPushButton("Seçili hisseyi sil")
-        self.delete_button.clicked.connect(self.delete_selected)
         buttons.addWidget(self.save_button)
-        buttons.addWidget(self.clear_button)
-        buttons.addWidget(self.delete_button)
         buttons.addStretch(1)
         form_layout.addLayout(buttons)
         root.addWidget(form_frame)
 
         toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("Portföy kayıtları"))
-        toolbar.addStretch(1)
-        self.import_button = QPushButton("Excel içe aktar")
+        self.clear_button = QPushButton("Formu Temizle")
+        self.clear_button.clicked.connect(self.clear_form)
+        self.delete_button = QPushButton("Seçili Kayıtları Sil")
+        self.delete_button.clicked.connect(self.delete_selected)
+        self.delete_all_button = QPushButton("Tüm Kayıtları Sil")
+        self.delete_all_button.clicked.connect(self.delete_all)
+        self.import_button = QPushButton("Excel'den İçe Aktar")
         self.import_button.clicked.connect(self.import_excel)
-        self.export_button = QPushButton("Excel dışa aktar")
+        self.export_button = QPushButton("Excel'e Aktar")
         self.export_button.clicked.connect(self.export_excel)
+        toolbar.addWidget(self.clear_button)
+        toolbar.addWidget(self.delete_button)
+        toolbar.addWidget(self.delete_all_button)
+        toolbar.addStretch(1)
         toolbar.addWidget(self.import_button)
         toolbar.addWidget(self.export_button)
         root.addLayout(toolbar)
 
-        self.table = QTableWidget(0, 7)
+        self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
-            ["Hisse", "Şirket", "Adet", "Ort. maliyet", "Toplam maliyet", "Sektör", "Son güncelleme"]
+            ["Hisse", "Şirket", "Adet", "Ort. maliyet", "Toplam maliyet", "Sektör", "Not", "Son güncelleme"]
         )
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSortingEnabled(False)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        for column in (2, 3, 4, 5, 6):
-            self.table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeToContents)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setStretchLastSection(False)
+        for column, width in enumerate((90, 240, 90, 120, 140, 145, 220, 125)):
+            self.table.setColumnWidth(column, width)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.table.itemDoubleClicked.connect(self.load_selected_to_form)
         root.addWidget(self.table, 1)
 
@@ -194,6 +200,7 @@ class BistPortfolioTab(QWidget):
                 f"{format_tl(average_cost)} ₺",
                 f"{format_tl(total_cost)} ₺",
                 holding.get("sector", ""),
+                holding.get("notes", ""),
                 updated,
             ]
             for column, value in enumerate(values):
@@ -222,6 +229,7 @@ class BistPortfolioTab(QWidget):
                 notes=self.notes_input.text(),
             )
             self.refresh_table()
+            self.portfolio_changed.emit()
             self.clear_form()
             QMessageBox.information(self, "BIST Portföy", f"{symbol} kaydı kaydedildi.")
         except Exception as exc:
@@ -239,17 +247,24 @@ class BistPortfolioTab(QWidget):
             field.clear()
         self.symbol_input.setFocus()
 
-    def _selected_symbol(self) -> str | None:
-        row = self.table.currentRow()
-        if row < 0:
-            return None
-        item = self.table.item(row, 0)
-        return item.data(Qt.UserRole) if item else None
+    def _selected_symbols(self) -> list[str]:
+        symbols: list[str] = []
+        for index in self.table.selectionModel().selectedRows():
+            item = self.table.item(index.row(), 0)
+            if item is not None:
+                symbol = item.data(Qt.UserRole)
+                if symbol:
+                    symbols.append(str(symbol))
+        return list(dict.fromkeys(symbols))
 
-    def load_selected_to_form(self, *_args) -> None:
-        symbol = self._selected_symbol()
+    def load_selected_to_form(self, item=None, *_args) -> None:
+        # When multiple rows are selected, load the row that was double-clicked.
+        symbol = item.data(Qt.UserRole) if item is not None else None
         if not symbol:
-            return
+            symbols = self._selected_symbols()
+            if not symbols:
+                return
+            symbol = symbols[0]
         holding = self.database.get_holding(symbol)
         if not holding:
             return
@@ -261,20 +276,40 @@ class BistPortfolioTab(QWidget):
         self.notes_input.setText(holding.get("notes", ""))
 
     def delete_selected(self) -> None:
-        symbol = self._selected_symbol()
-        if not symbol:
-            QMessageBox.information(self, "BIST Portföy", "Önce tablodan bir hisse seç.")
+        symbols = self._selected_symbols()
+        if not symbols:
+            QMessageBox.information(self, "BIST Portföy", "Önce tablodan bir veya daha fazla hisse seç.")
             return
         answer = QMessageBox.question(
             self,
-            "Hisseyi sil",
-            f"{symbol} portföy kaydı silinsin mi?",
+            "Seçili kayıtları sil",
+            f"{len(symbols)} seçili hisse kaydı silinecek:\n{', '.join(symbols)}\n\nDevam edilsin mi?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
         if answer == QMessageBox.Yes:
-            self.database.delete_holding(symbol)
+            self.database.delete_holdings(symbols)
             self.refresh_table()
+            self.portfolio_changed.emit()
+            self.clear_form()
+
+    def delete_all(self) -> None:
+        holdings = self.database.list_holdings()
+        if not holdings:
+            QMessageBox.information(self, "Tüm kayıtları sil", "BIST portföyünde silinecek kayıt yok.")
+            return
+        answer = QMessageBox.warning(
+            self,
+            "Tüm BIST kayıtlarını sil",
+            f"{len(holdings)} hisse kaydının tamamı kalıcı olarak silinecek.\n\n"
+            "Bu işlem geri alınamaz. Devam edilsin mi?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer == QMessageBox.Yes:
+            self.database.delete_all()
+            self.refresh_table()
+            self.portfolio_changed.emit()
             self.clear_form()
 
     def import_excel(self) -> None:
@@ -290,6 +325,8 @@ class BistPortfolioTab(QWidget):
             rows = read_portfolio_excel(path)
             imported, errors = self.database.import_rows(rows)
             self.refresh_table()
+            if imported:
+                self.portfolio_changed.emit()
             message = f"{imported} kayıt içe aktarıldı."
             if errors:
                 message += "\n\nAtlanan satırlar:\n" + "\n".join(errors[:12])
@@ -317,7 +354,10 @@ class BistPortfolioTab(QWidget):
         if not path.lower().endswith(".xlsx"):
             path += ".xlsx"
         try:
-            write_portfolio_excel(path, holdings)
+            write_portfolio_excel(
+                path, holdings, rates_updated_at=getattr(self, "rates_updated_at", None),
+                rates_status=getattr(self, "rates_status", None)
+            )
             QMessageBox.information(self, "Dışa aktarma tamamlandı", f"Dosya kaydedildi:\n{path}")
         except Exception as exc:
             QMessageBox.warning(self, "Excel kaydedilemedi", str(exc))
