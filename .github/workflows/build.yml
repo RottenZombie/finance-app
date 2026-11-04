@@ -1,4 +1,4 @@
-name: FinanceTerminal 2.2.7-dev - Windows EXE
+name: FinanceTerminal 2.2.8 - Windows EXE
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build FinanceTerminal 2.2.7-dev Windows x64
+    name: Build FinanceTerminal 2.2.8 Windows x64
     runs-on: windows-latest
 
     steps:
@@ -34,7 +34,7 @@ jobs:
       - name: Verify application imports
         shell: pwsh
         run: |
-          python -c "from ui.main_window import MainWindow; from features.bist.portfolio_tab import BistPortfolioTab; from features.investment_store import InvestmentStore; from features.investment_panel import InvestmentPanel; print('FinanceTerminal imports OK')"
+          python -c "from ui.main_window import MainWindow; from features.bist.portfolio_tab import BistPortfolioTab; from features.investment_store import InvestmentStore; from features.investment_panel import InvestmentPanel; from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker; print('FinanceTerminal imports OK')"
 
       - name: Run tests
         env:
@@ -63,7 +63,7 @@ jobs:
         run: |
           @"
           Application: FinanceTerminal
-          Application version: 2.2.7-dev
+          Application version: 2.2.8-dev
           Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
           BIST AI: included
@@ -78,12 +78,13 @@ jobs:
           Resizable table columns: included
           Last quote update timestamps: included
           Optional system tray: included
+          GitHub Releases auto updater: included
           "@ | Set-Content -Path dist/build-info.txt -Encoding UTF8
 
       - name: Upload versioned EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FinanceTerminal-2.2.7-Windows-x64
+          name: FinanceTerminal-2.2.8-Windows-x64
           path: |
             dist/FinanceTerminal.exe
             dist/build-info.txt

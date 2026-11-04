@@ -8,6 +8,7 @@ DEFAULT = {
     "precision": 2,
     "start_tab": 0,
     "close_to_tray": None,
+    "auto_update_check": None,
 }
 
 

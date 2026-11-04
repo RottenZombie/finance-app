@@ -100,3 +100,9 @@ The GitHub Actions workflow builds a Windows x64 executable using PyInstaller. T
 - Pencerenin üst kısmındaki **Tüm Portföyü Excel'e Aktar** düğmesi tek bir çalışma kitabı oluşturur. İlk sayfa `Summary`, devamında `Döviz`, `Maden` ve `Hisse Senedi` detay sayfaları yer alır.
 - Summary içinde Döviz ve Maden güncel fiyatla değerlenir. Bu sürümde BIST canlı fiyat akışı bulunmadığından Hisse Senedi toplamı kayıtlı alış maliyetidir; genel toplamın hesaplama esası Summary notlarında belirtilir. Eksik fiyat/kur varsa genel toplam boş bırakılır.
 - Birleşik çalışma kitabı Döviz, Maden ve BIST sekmelerinin mevcut içe aktarma özellikleriyle uyumludur.
+
+## Otomatik güncelleme (Windows EXE)
+
+FinanceTerminal, `RottenZombie/finance-app` GitHub deposunun en son kararlı Release kaydını kontrol eder. İlk açılışta otomatik kontrol tercihi sorulur; tercih hatırlanabilir. Ayarlar bölümünden otomatik kontrol açılıp kapatılabilir veya güncelleme elle denetlenebilir.
+
+Yeni sürümün `FinanceTerminal.exe` varlığı HTTPS üzerinden indirilir. İndirilen dosya boyutu, Windows EXE imzası ve GitHub API SHA-256 özeti sunuyorsa bu özet doğrulanır. Çalışan EXE doğrudan değiştirilmez: uygulama kapandıktan sonra geçici PowerShell yardımcısı EXE'yi değiştirir ve yeniden başlatır. Uygulamanın bulunduğu klasör yazılabilir olmalıdır. Kaynak kodla (`python app.py`) çalıştırıldığında güncelleme kontrolü yapılabilir, ancak kaynak kod kendi kendini EXE olarak güncellemez.

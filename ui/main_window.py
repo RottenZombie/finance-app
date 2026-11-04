@@ -1,4 +1,5 @@
 from decimal import Decimal
+import sys
 
 from PySide6.QtCore import QTimer
 from pathlib import Path
@@ -7,7 +8,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QComboBox, QLabel, QPushButton, QDialog, QSizePolicy,
-    QFileDialog, QMessageBox, QTextBrowser, QCheckBox,
+    QFileDialog, QMessageBox, QTextBrowser, QCheckBox, QProgressDialog,
     QSystemTrayIcon, QMenu, QApplication,
 )
 
@@ -23,6 +24,10 @@ from features.combined_import import (
 )
 from core.resources import resource_path
 from settings import load, save, resolve_theme
+from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker
+from core.updater import (
+    UpdateError, current_executable_path, launch_windows_update_helper,
+)
 
 
 class MainWindow(QWidget):
@@ -32,7 +37,7 @@ class MainWindow(QWidget):
         self.setWindowIcon(QIcon(str(resource_path("assets/finance_terminal.png"))))
 
         # ---------------- SETTINGS ----------------
-        self.VERSION = "2.2.7-dev"
+        self.VERSION = "2.2.8-dev"
         self.settings = load()
         self.worker: Worker | None = None
         self._close_after_update = False
@@ -133,6 +138,8 @@ class MainWindow(QWidget):
         self.apply_theme()
         self.refresh_summary()
         self.update()
+        # Startup update preference is asked only by the packaged Windows EXE.
+        QTimer.singleShot(1400, self._startup_update_check)
 
     # ---------------- SUMMARY ----------------
     @staticmethod
@@ -273,6 +280,167 @@ class MainWindow(QWidget):
         else:
             QMessageBox.information(self, "İçe aktarma tamamlandı", message)
 
+    # ---------------- SOFTWARE UPDATES ----------------
+    def _startup_update_check(self) -> None:
+        """Ask once on the packaged EXE, then follow the saved preference."""
+        if not getattr(sys, "frozen", False):
+            return
+
+        preference = self.settings.get("auto_update_check", None)
+        if preference is None:
+            dialog = QMessageBox(self)
+            dialog.setWindowTitle("Otomatik güncelleme kontrolü")
+            dialog.setIcon(QMessageBox.Icon.Question)
+            dialog.setText("FinanceTerminal açılışta güncellemeleri otomatik kontrol etsin mi?")
+            dialog.setInformativeText(
+                "Yeni bir sürüm bulunursa indirilecek ve uygulama yeniden başlatılarak güncellenecek. "
+                "Kontrol için internet bağlantısı gerekir."
+            )
+            dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            dialog.setDefaultButton(QMessageBox.StandardButton.Yes)
+            remember = QCheckBox("Bu tercihi hatırla ve tekrar sorma")
+            dialog.setCheckBox(remember)
+            enabled = dialog.exec() == QMessageBox.StandardButton.Yes
+            if remember.isChecked():
+                self.settings["auto_update_check"] = enabled
+                save(self.settings)
+        else:
+            enabled = bool(preference)
+
+        if enabled:
+            self.check_for_updates(automatic=True)
+
+    def check_for_updates(self, automatic: bool = False) -> None:
+        """Check the latest stable GitHub Release without blocking the UI."""
+        if self._update_check_worker is not None and self._update_check_worker.isRunning():
+            if not automatic:
+                QMessageBox.information(self, "Güncelleme", "Güncelleme kontrolü zaten devam ediyor.")
+            return
+        if self._update_download_worker is not None and self._update_download_worker.isRunning():
+            if not automatic:
+                QMessageBox.information(self, "Güncelleme", "Güncelleme dosyası şu anda indiriliyor.")
+            return
+
+        self._update_check_automatic = automatic
+        self._update_check_payload = None
+        worker = UpdateCheckWorker(self.VERSION, self)
+        self._update_check_worker = worker
+        worker.completed.connect(self._store_update_check_result)
+        worker.finished.connect(self._finish_update_check)
+        worker.start()
+
+    def _store_update_check_result(self, payload) -> None:
+        self._update_check_payload = payload
+
+    def _finish_update_check(self) -> None:
+        worker = self._update_check_worker
+        if worker is not None:
+            worker.deleteLater()
+        self._update_check_worker = None
+        payload = self._update_check_payload or {"release": None, "error": "Güncelleme kontrolü sonuç vermedi."}
+        automatic = self._update_check_automatic
+        error = payload.get("error")
+        if error:
+            QMessageBox.warning(self, "Güncelleme kontrolü", str(error))
+            return
+
+        release = payload.get("release")
+        if release is None:
+            QMessageBox.information(
+                self, "FinanceTerminal",
+                f"Güncelleme bulunamadı. {self.VERSION} sürümünü kullanıyorsunuz."
+            )
+            return
+
+        if not getattr(sys, "frozen", False):
+            QMessageBox.information(
+                self, "Yeni sürüm bulundu",
+                f"FinanceTerminal {release.version} yayımlandı.\n\n"
+                "Kaynak kod modunda çalıştığınız için uygulama dosyası otomatik değiştirilemez. "
+                f"Windows EXE dosyasını buradan indirebilirsiniz:\n{release.release_url}"
+            )
+            return
+
+        if not automatic:
+            answer = QMessageBox.question(
+                self, "Yeni sürüm bulundu",
+                f"FinanceTerminal {release.version} sürümü bulundu.\n\n"
+                "Güncelleme indirilsin ve uygulama yeniden başlatılarak kurulsun mu?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+        self._start_update_download(release, automatic=automatic)
+
+    def _start_update_download(self, release, automatic: bool) -> None:
+        try:
+            executable = current_executable_path()
+            # Fail early if the application is installed in a protected folder.
+            from core.updater import ensure_install_directory_writable
+            ensure_install_directory_writable(executable)
+        except UpdateError as exc:
+            QMessageBox.warning(self, "Güncelleme yapılamıyor", str(exc))
+            return
+
+        self._pending_update_release = release
+        self._pending_update_automatic = automatic
+        self._update_download_payload = None
+        self._update_progress = QProgressDialog(self)
+        self._update_progress.setLabelText(f"FinanceTerminal {release.version} indiriliyor...")
+        self._update_progress.setRange(0, 0)
+        self._update_progress.setWindowTitle("Güncelleme indiriliyor")
+        self._update_progress.setCancelButton(None)
+        self._update_progress.setMinimumDuration(0)
+        self._update_progress.setAutoClose(False)
+        self._update_progress.show()
+
+        worker = UpdateDownloadWorker(release, self)
+        self._update_download_worker = worker
+        worker.completed.connect(self._store_update_download_result)
+        worker.finished.connect(self._finish_update_download)
+        worker.start()
+
+    def _store_update_download_result(self, payload) -> None:
+        self._update_download_payload = payload
+
+    def _finish_update_download(self) -> None:
+        worker = self._update_download_worker
+        if worker is not None:
+            worker.deleteLater()
+        self._update_download_worker = None
+        if self._update_progress is not None:
+            self._update_progress.close()
+            self._update_progress.deleteLater()
+            self._update_progress = None
+
+        payload = self._update_download_payload or {"path": None, "error": "İndirme sonucu alınamadı."}
+        error = payload.get("error")
+        if error:
+            QMessageBox.warning(self, "Güncelleme indirilemedi", str(error))
+            return
+
+        downloaded = Path(payload["path"])
+        try:
+            executable = current_executable_path()
+            launch_windows_update_helper(downloaded, executable)
+        except Exception as exc:
+            try:
+                downloaded.unlink(missing_ok=True)
+            except OSError:
+                pass
+            QMessageBox.warning(self, "Güncelleme başlatılamadı", str(exc))
+            return
+
+        QMessageBox.information(
+            self, "Güncelleme hazır",
+            f"FinanceTerminal {self._pending_update_release.version} indirildi. "
+            "Uygulama şimdi kapanacak, dosya güncellenecek ve yeniden açılacak."
+        )
+        self._force_exit = True
+        self.close()
+
     # ---------------- FORMAT ----------------
     def fmt(self, v):
         if v is None:
@@ -369,6 +537,15 @@ class MainWindow(QWidget):
         self.close()
 
     def _request_application_close(self, event) -> None:
+        for update_worker in (self._update_check_worker, self._update_download_worker):
+            if update_worker is not None and update_worker.isRunning():
+                QMessageBox.information(
+                    self, "İşlem devam ediyor",
+                    "Güncelleme işlemi tamamlandıktan sonra uygulamayı kapatabilirsiniz."
+                )
+                event.ignore()
+                return
+
         worker = self.worker
         if worker is not None and worker.isRunning():
             self._close_after_update = True
@@ -568,6 +745,10 @@ class MainWindow(QWidget):
         theme.setCurrentIndex(theme_index if theme_index >= 0 else 0)
 
         btn = QPushButton("Kaydet")
+        auto_update = QCheckBox("Her açılışta güncellemeleri otomatik kontrol et")
+        auto_update.setChecked(bool(self.settings.get("auto_update_check", False)))
+        update_btn = QPushButton("Güncellemeleri Kontrol Et")
+
         help_btn = QPushButton("Yardım / Kullanım Kılavuzu")
         help_btn.clicked.connect(lambda: self.open_help(dlg))
 
@@ -581,11 +762,18 @@ class MainWindow(QWidget):
             self.settings["start_tab"] = self.tabs.currentIndex()
             self.settings["theme"] = self.theme_preference
             self.settings["summary_tab_migrated"] = True
+            self.settings["auto_update_check"] = auto_update.isChecked()
             self.apply_theme()
             save(self.settings)
             dlg.accept()
 
         btn.clicked.connect(save_all)
+
+        def manual_update_check():
+            save_all()
+            QTimer.singleShot(0, lambda: self.check_for_updates(automatic=False))
+
+        update_btn.clicked.connect(manual_update_check)
         layout.addWidget(version)
         layout.addWidget(QLabel("Başlangıç Sekmesi"))
         layout.addWidget(start_tab)
@@ -593,7 +781,9 @@ class MainWindow(QWidget):
         layout.addWidget(precision)
         layout.addWidget(QLabel("Tema"))
         layout.addWidget(theme)
+        layout.addWidget(auto_update)
         layout.addWidget(btn)
+        layout.addWidget(update_btn)
         layout.addWidget(help_btn)
         dlg.setLayout(layout)
         dlg.exec()
@@ -656,6 +846,14 @@ class MainWindow(QWidget):
         <p>Başlangıç sekmesini, sayı hassasiyetini ve temayı seçebilirsiniz.
         <b>Windows ayarını takip et</b> seçeneği sisteminizin açık/koyu temasını
         kullanır. Açık, koyu veya mavi temayı ayrıca elle seçebilirsiniz.</p>
+
+        <h3>Güncellemeler</h3>
+        <p>Güncellemeleri Kontrol Et düğmesi GitHub üzerindeki en son kararlı sürümü denetler.
+        Otomatik kontrol seçeneği açık ise uygulama açılışta kontrol yapar. Yeni sürüm
+        bulunduğunda Windows EXE dosyası güvenli bağlantı üzerinden indirilir, dosya
+        doğrulanır; uygulama kapatıldıktan sonra güncelleyici mevcut EXE'nin yerine
+        yenisini koyar ve FinanceTerminal'ı yeniden açar. Yerel kaynak kod çalıştırmasında
+        EXE otomatik olarak değiştirilemez.</p>
 
         <p><i>Not: Uygulamadaki fiyatlar bilgilendirme ve portföy takibi içindir.
         Gerçek işlem öncesinde bankanızın, aracı kurumunuzun veya kuyumcunuzun
