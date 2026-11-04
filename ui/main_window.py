@@ -7,6 +7,7 @@ from worker import Worker
 from ui.card import Card
 from features.metals import Metals
 from features.portfolio import Portfolio
+from features.bist.portfolio_tab import BistPortfolioTab
 from settings import load, save
 
 
@@ -15,7 +16,7 @@ class MainWindow(QWidget):
         super().__init__()
 
         # ---------------- SETTINGS ----------------
-        self.VERSION = "2.1.2"
+        self.VERSION = "2.2.1"
         self.settings = load()
 
         self.theme = self.settings.get("theme", "White")
@@ -27,7 +28,6 @@ class MainWindow(QWidget):
 
         # ---------------- TABS ----------------
         self.tabs = QTabWidget()
-        self.tabs.setCurrentIndex(self.start_tab)
         self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         # ---------------- CURRENCY ----------------
@@ -63,10 +63,21 @@ class MainWindow(QWidget):
         # ---------------- OTHER TABS ----------------
         self.portfolio = Portfolio()
         self.metals = Metals()
+        self.bist_portfolio = BistPortfolioTab()
 
         self.tabs.addTab(self.tab1, "Currency")
         self.tabs.addTab(self.portfolio, "Portfolio")
         self.tabs.addTab(self.metals, "Metals")
+        self.tabs.addTab(self.bist_portfolio, "BIST AI")
+
+        # Restore the saved starting tab after all tabs have been added.
+        try:
+            start_index = int(self.start_tab)
+        except (TypeError, ValueError):
+            start_index = 0
+        self.tabs.setCurrentIndex(
+            start_index if 0 <= start_index < self.tabs.count() else 0
+        )
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.tabs)
@@ -164,7 +175,7 @@ class MainWindow(QWidget):
         version = QLabel(f"Version: {self.VERSION}")
 
         start_tab = QComboBox()
-        start_tab.addItems(["Currency", "Portfolio", "Metals"])
+        start_tab.addItems(["Currency", "Portfolio", "Metals", "BIST AI"])
         start_tab.setCurrentIndex(self.tabs.currentIndex())
 
         precision = QComboBox()
@@ -180,8 +191,7 @@ class MainWindow(QWidget):
         def save_all():
             self.precision = int(precision.currentText())
 
-            tab_map = {"Currency": 0, "Portfolio": 1, "Metals": 2}
-            self.tabs.setCurrentIndex(tab_map[start_tab.currentText()])
+            self.tabs.setCurrentIndex(start_tab.currentIndex())
             self.theme = theme.currentText()
 
             self.settings["precision"] = self.precision
