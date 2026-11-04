@@ -1,3 +1,11 @@
+[![Toplam İndirme](https://img.shields.io/github/downloads/RottenZombie/finance-app/total?color=blue&label=Downloads)](https://github.com/RottenZombie/finance-app/releases/latest)
+[![Open Issues](https://img.shields.io/github/issues/RottenZombie/finance-app)](https://github.com/RottenZombie/finance-app/issues)
+[![Windows](https://img.shields.io/badge/Platform-Windows%2011-0078D4?logo=windows11&logoColor=white&style=flat-square)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
+[![Language](https://img.shields.io/badge/Language-Python%203.11+-3776AB?logo=python&logoColor=white&style=flat-square)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
+
+[![Logo](assets/finance_terminal.png)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
+
+
 # FinanceTerminal 2.2.7
 
 A lightweight Windows desktop application for currency conversion and personal portfolio tracking. Built with Python and PySide6, with local SQLite storage for investment records.
