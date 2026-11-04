@@ -12,7 +12,7 @@ A lightweight Windows desktop application for currency conversion and personal p
 
 **Latest stable version:** `2.2.7`  
 **Platform:** Windows x64  
-**Download:** [GitHub Releases](https://github.com/RottenZombie/finance-app/releases/latest)
+**Download:** [![Toplam İndirme](https://img.shields.io/github/downloads/RottenZombie/finance-app/total?color=blue&label=Downloads)](https://github.com/RottenZombie/finance-app/releases/latest)
 
 ---
 
