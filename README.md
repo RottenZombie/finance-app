@@ -1,3 +1,5 @@
+![Toplam İndirme](https://img.shields.io/github/downloads/RottenZombie/finance-app/total?color=blue&label=Downloads)
+
 # FinanceTerminal 2.2.5-dev
 
 ## What is new in 2.2.5-dev
