@@ -1,4 +1,4 @@
-![Toplam İndirme](https://img.shields.io/github/downloads/RottenZombie/finance-app/total?color=blue&label=Downloads)
+[![Toplam İndirme](https://img.shields.io/github/downloads/RottenZombie/finance-app/total?color=blue&label=Downloads)](https://github.com/RottenZombie/finance-app/releases/latest)
 
 # FinanceTerminal 2.2.5-dev
 
