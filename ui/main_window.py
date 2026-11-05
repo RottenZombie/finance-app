@@ -35,11 +35,20 @@ class MainWindow(QWidget):
         super().__init__()
 
         self.setWindowIcon(QIcon(str(resource_path("assets/finance_terminal.png"))))
+        self.setWindowTitle("FinanceTerminal")
 
         # ---------------- SETTINGS ----------------
-        self.VERSION = "2.2.8-dev"
+        self.VERSION = "2.2.9"
         self.settings = load()
         self.worker: Worker | None = None
+        self._update_check_worker = None
+        self._update_download_worker = None
+        self._update_progress = None
+        self._update_check_automatic = False
+        self._update_check_payload = None
+        self._update_download_payload = None
+        self._pending_update_release = None
+        self._pending_update_automatic = False
         self._close_after_update = False
         self._final_close = False
         self._force_exit = False
@@ -293,7 +302,7 @@ class MainWindow(QWidget):
             dialog.setIcon(QMessageBox.Icon.Question)
             dialog.setText("FinanceTerminal açılışta güncellemeleri otomatik kontrol etsin mi?")
             dialog.setInformativeText(
-                "Yeni bir sürüm bulunursa indirilecek ve uygulama yeniden başlatılarak güncellenecek. "
+                "Yeni sürüm bulunursa indirme ve kurulumdan önce onayınız istenir. "
                 "Kontrol için internet bağlantısı gerekir."
             )
             dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -361,16 +370,16 @@ class MainWindow(QWidget):
             )
             return
 
-        if not automatic:
-            answer = QMessageBox.question(
-                self, "Yeni sürüm bulundu",
-                f"FinanceTerminal {release.version} sürümü bulundu.\n\n"
-                "Güncelleme indirilsin ve uygulama yeniden başlatılarak kurulsun mu?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                return
+        answer = QMessageBox.question(
+            self, "FinanceTerminal güncellemesi bulundu",
+            f"FinanceTerminal {release.version} sürümü bulundu.\n\n"
+            "Güncelleme şimdi indirilsin ve uygulama yeniden başlatılarak kurulsun mu?\n\n"
+            "Portföy kayıtlarınız ve ayarlarınız korunur. Güncelleme yalnızca uygulama EXE dosyasını değiştirir.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
 
         self._start_update_download(release, automatic=automatic)
 
@@ -482,6 +491,18 @@ class MainWindow(QWidget):
         self.raise_()
         self.activateWindow()
 
+    def show_from_second_instance(self) -> None:
+        """Bring this process to the foreground when the user launches it again."""
+        if self._in_tray:
+            self.restore_from_tray()
+            return
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
+        self.raise_()
+        self.activateWindow()
+
     def _minimize_to_tray(self) -> None:
         if not self._tray_available or self._tray_icon is None:
             QMessageBox.information(
@@ -498,7 +519,7 @@ class MainWindow(QWidget):
         try:
             self._tray_icon.showMessage(
                 "FinanceTerminal çalışıyor",
-                "Uygulama sistem tepsisinde açık. Fiyatlar otomatik yenilenmez; "
+                "FinanceTerminal sistem tepsisinde açık. Fiyatlar otomatik yenilenmez; "
                 "güncelleme için uygulamayı açıp Güncelle'ye basın.",
                 QSystemTrayIcon.MessageIcon.Information,
                 3500,
@@ -745,7 +766,18 @@ class MainWindow(QWidget):
         theme.setCurrentIndex(theme_index if theme_index >= 0 else 0)
 
         btn = QPushButton("Kaydet")
-        auto_update = QCheckBox("Her açılışta güncellemeleri otomatik kontrol et")
+        close_behavior = QComboBox()
+        close_behavior.addItem("Her kapatmada sor", "ask")
+        close_behavior.addItem("Sistem tepsisine küçült", "tray")
+        close_behavior.addItem("Uygulamayı tamamen kapat", "exit")
+        saved_close = self.settings.get("close_to_tray", None)
+        close_key = "ask" if saved_close is None else ("tray" if bool(saved_close) else "exit")
+        close_index = close_behavior.findData(close_key)
+        close_behavior.setCurrentIndex(close_index if close_index >= 0 else 0)
+
+        auto_update = QCheckBox(
+            "Başlangıçta güncellemeleri kontrol et (yeni sürüm bulunursa önce sor)"
+        )
         auto_update.setChecked(bool(self.settings.get("auto_update_check", False)))
         update_btn = QPushButton("Güncellemeleri Kontrol Et")
 
@@ -763,6 +795,10 @@ class MainWindow(QWidget):
             self.settings["theme"] = self.theme_preference
             self.settings["summary_tab_migrated"] = True
             self.settings["auto_update_check"] = auto_update.isChecked()
+            close_choice = close_behavior.currentData()
+            self.settings["close_to_tray"] = (
+                None if close_choice == "ask" else close_choice == "tray"
+            )
             self.apply_theme()
             save(self.settings)
             dlg.accept()
@@ -781,7 +817,13 @@ class MainWindow(QWidget):
         layout.addWidget(precision)
         layout.addWidget(QLabel("Tema"))
         layout.addWidget(theme)
+        layout.addWidget(QLabel("Pencereyi X ile kapatınca"))
+        layout.addWidget(close_behavior)
         layout.addWidget(auto_update)
+        layout.addWidget(QLabel(
+            "Yeni sürüm bulunduğunda indirme ve kurulum için ayrıca onayınız istenir. "
+            "Kişisel portföy verileri %APPDATA%\\FinanceTerminal altında saklanır."
+        ))
         layout.addWidget(btn)
         layout.addWidget(update_btn)
         layout.addWidget(help_btn)
@@ -797,7 +839,7 @@ class MainWindow(QWidget):
         layout = QVBoxLayout(dlg)
         browser = QTextBrowser(dlg)
         browser.setOpenExternalLinks(True)
-        browser.setHtml("""
+        browser.setHtml(r"""
         <h2>FinanceTerminal Kullanım Kılavuzu</h2>
         <p>FinanceTerminal; döviz, yatırım amaçlı döviz birikimi, değerli maden ve
         BIST portföy kayıtlarını tek uygulamada takip etmenizi sağlar.</p>
@@ -849,11 +891,16 @@ class MainWindow(QWidget):
 
         <h3>Güncellemeler</h3>
         <p>Güncellemeleri Kontrol Et düğmesi GitHub üzerindeki en son kararlı sürümü denetler.
-        Otomatik kontrol seçeneği açık ise uygulama açılışta kontrol yapar. Yeni sürüm
-        bulunduğunda Windows EXE dosyası güvenli bağlantı üzerinden indirilir, dosya
-        doğrulanır; uygulama kapatıldıktan sonra güncelleyici mevcut EXE'nin yerine
-        yenisini koyar ve FinanceTerminal'ı yeniden açar. Yerel kaynak kod çalıştırmasında
-        EXE otomatik olarak değiştirilemez.</p>
+        Otomatik kontrol açık ise uygulama açılışta kontrol yapar. Yeni sürüm bulunduğunda
+        indirme ve kurulum için mutlaka onayınız istenir. Güncelleme yalnızca EXE dosyasını
+        değiştirir; %APPDATA%\FinanceTerminal altında saklanan portföy verileriniz ve ayarlarınız korunur.
+        Yerel kaynak kod çalıştırmasında EXE otomatik olarak değiştirilemez.</p>
+
+        <h3>Uygulama verileri ve tek örnek</h3>
+        <p>Ayarlar ve portföy verileri Windows kullanıcı profilinizdeki
+        %APPDATA%\FinanceTerminal klasöründe saklanır. Böylece masaüstünde config.json
+        dosyası oluşmaz ve uygulama güncellendiğinde kayıtlarınız silinmez. FinanceTerminal
+        zaten açıksa EXE'yi yeniden başlatmak yeni pencere oluşturmaz; açık pencereyi öne getirir.</p>
 
         <p><i>Not: Uygulamadaki fiyatlar bilgilendirme ve portföy takibi içindir.
         Gerçek işlem öncesinde bankanızın, aracı kurumunuzun veya kuyumcunuzun

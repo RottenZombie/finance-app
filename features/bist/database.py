@@ -9,15 +9,12 @@ import sqlite3
 from typing import Any
 
 from .utils import normalize_symbol, parse_localized_decimal
+from core.app_paths import data_directory
 
 
 def default_database_path() -> Path:
     """Return a per-user data location; never write portfolio data beside the EXE."""
-    if os.name == "nt":
-        root = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    else:
-        root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return root / "FinanceTerminal" / "data" / "bist_portfolio.db"
+    return data_directory() / "bist_portfolio.db"
 
 
 class BistDatabase:

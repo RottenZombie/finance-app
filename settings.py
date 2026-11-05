@@ -1,7 +1,9 @@
 import json
 import os
+import sys
+from pathlib import Path
 
-FILE = "config.json"
+from core.app_paths import app_data_directory, settings_file_path
 
 DEFAULT = {
     "theme": "System",
@@ -12,23 +14,86 @@ DEFAULT = {
 }
 
 
-def load():
-    settings = DEFAULT.copy()
-    if not os.path.exists(FILE):
-        return settings
+def _legacy_config_candidates() -> list[Path]:
+    """Find config files written beside the old EXE/current working directory."""
+    candidates: list[Path] = []
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable).resolve().parent / "config.json")
+        candidates.append(Path.cwd() / "config.json")
+    else:
+        candidates.append(Path(__file__).resolve().parent / "config.json")
+        candidates.append(Path.cwd() / "config.json")
+
+    target = settings_file_path().resolve()
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        key = str(resolved).casefold()
+        if key != str(target).casefold() and key not in seen:
+            unique.append(resolved)
+            seen.add(key)
+    return unique
+
+
+def _read_json(path: Path) -> dict | None:
     try:
-        with open(FILE, "r", encoding="utf-8") as f:
-            stored = json.load(f)
-        if isinstance(stored, dict):
-            settings.update(stored)
-        return settings
+        with path.open("r", encoding="utf-8") as stream:
+            value = json.load(stream)
+        return value if isinstance(value, dict) else None
     except (OSError, ValueError, TypeError):
-        return settings
+        return None
+
+
+def _migrate_legacy_config(target: Path) -> None:
+    """Move old beside-EXE config into %APPDATA% once, without losing settings."""
+    if target.exists():
+        # A prior run may have copied the config but could not remove the old file.
+        if getattr(sys, "frozen", False):
+            for legacy in _legacy_config_candidates():
+                try:
+                    legacy.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        return
+
+    for legacy in _legacy_config_candidates():
+        stored = _read_json(legacy)
+        if stored is None:
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("w", encoding="utf-8") as stream:
+                json.dump(stored, stream, indent=4, ensure_ascii=False)
+            # Remove the visible legacy file only after the new copy is safely written.
+            if getattr(sys, "frozen", False):
+                try:
+                    legacy.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            return
+        except OSError:
+            return
+
+
+def load():
+    target = settings_file_path()
+    _migrate_legacy_config(target)
+    settings = DEFAULT.copy()
+    stored = _read_json(target)
+    if stored is not None:
+        settings.update(stored)
+    return settings
 
 
 def save(data):
-    with open(FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+    target = settings_file_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8") as stream:
+        json.dump(data, stream, indent=4, ensure_ascii=False)
 
 
 def detect_system_theme() -> str:
@@ -58,7 +123,6 @@ def detect_system_theme() -> str:
         except Exception:
             pass
 
-    # Unknown system preference defaults to dark, as requested.
     return "Dark"
 
 

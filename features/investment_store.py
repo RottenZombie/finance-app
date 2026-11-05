@@ -14,6 +14,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from features.export_metadata import add_export_metadata_sheet
+from core.app_paths import data_directory
 
 
 ALLOWED_ASSETS = {
@@ -24,11 +25,7 @@ ALLOWED_ASSETS = {
 
 def default_database_path() -> Path:
     """Keep holdings in the user's application-data directory, not beside the EXE."""
-    if os.name == "nt":
-        root = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    else:
-        root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return root / "FinanceTerminal" / "data" / "investment_holdings.db"
+    return data_directory() / "investment_holdings.db"
 
 
 def parse_localized_decimal(value: object, *, field_name: str = "Değer") -> Decimal:
