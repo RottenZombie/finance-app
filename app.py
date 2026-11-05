@@ -51,7 +51,7 @@ single_instance.activated.connect(w.show_from_second_instance)
 app._finance_terminal_single_instance = single_instance
 app.aboutToQuit.connect(single_instance.close)
 
-# FinanceTerminal 2.2.9: AppData settings, single instance and consent-based updates.
+# FinanceTerminal 2.2.9-dev: AppData settings, single instance and consent-based updates.
 w.resize(1100, 760)
 w.show()
 

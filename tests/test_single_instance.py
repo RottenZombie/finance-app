@@ -36,6 +36,14 @@ class SingleInstanceTests(unittest.TestCase):
             second.close()
             first.close()
 
+        # Once the primary process releases its lock, a fresh launch can
+        # become primary again. The secondary must not remove the primary lock.
+        third = SingleInstance(server_name=name)
+        try:
+            self.assertTrue(third.is_primary)
+        finally:
+            third.close()
+
 
 if __name__ == "__main__":
     unittest.main()

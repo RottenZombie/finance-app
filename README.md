@@ -105,9 +105,9 @@ The GitHub Actions workflow builds a Windows x64 executable using PyInstaller. T
 
 ## Otomatik güncelleme (Windows EXE)
 
-FinanceTerminal, `RottenZombie/finance-app` GitHub deposunun en son kararlı Release kaydını kontrol eder. İlk açılışta otomatik kontrol tercihi sorulur; tercih hatırlanabilir. Ayarlar bölümünden otomatik kontrol açılıp kapatılabilir veya güncelleme elle denetlenebilir. Yeni sürüm bulunduğunda, otomatik kontrol açık olsa bile indirme ve kurulumdan önce kullanıcı onayı istenir.
+FinanceTerminal, `RottenZombie/finance-app` GitHub deposunun en son kararlı Release kaydını kontrol eder. İlk açılışta otomatik kontrol tercihi sorulur; tercih hatırlanabilir. Ayarlar bölümünden otomatik kontrol açılıp kapatılabilir veya güncelleme elle denetlenebilir.
 
-Yeni sürümün `FinanceTerminal.exe` varlığı HTTPS üzerinden indirilir. İndirilen dosya boyutu ve EXE başlığı doğrulanır; GitHub API SHA-256 özeti sunuyorsa ayrıca kontrol edilir. Çalışan EXE doğrudan değiştirilmez: uygulama kapandıktan sonra geçici PowerShell yardımcısı yalnızca EXE'yi değiştirir ve yeniden başlatır. Ayarlar ve SQLite portföy verileri `%APPDATA%\FinanceTerminal` altında kaldığı için güncelleme sırasında korunur. Uygulamanın bulunduğu klasör yazılabilir olmalıdır. Kaynak kodla (`python app.py`) çalıştırıldığında güncelleme kontrolü yapılabilir, ancak kaynak kod kendi kendini EXE olarak güncellemez.
+Yeni sürümün `FinanceTerminal.exe` varlığı HTTPS üzerinden indirilir. İndirilen dosya boyutu, Windows EXE imzası ve GitHub API SHA-256 özeti sunuyorsa bu özet doğrulanır. Çalışan EXE doğrudan değiştirilmez: uygulama kapandıktan sonra geçici PowerShell yardımcısı EXE'yi değiştirir ve yeniden başlatır. Uygulamanın bulunduğu klasör yazılabilir olmalıdır. Kaynak kodla (`python app.py`) çalıştırıldığında güncelleme kontrolü yapılabilir, ancak kaynak kod kendi kendini EXE olarak güncellemez.
 
 
 ## Development notes (2.2.9-dev)
