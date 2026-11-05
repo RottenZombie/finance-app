@@ -1,29 +1,30 @@
-"""Single-instance guard using QLockFile plus Qt local-server IPC."""
+"""Single-instance guard using QLockFile and AppData activation signals.
+
+QLockFile is the authoritative process lock.  A small per-user request queue
+is used to wake the primary GUI instance.  The queue is deliberately file
+based: it behaves consistently for two launches in the same process during
+unit tests and for separate Windows processes, without relying on named-pipe
+server semantics.
+"""
 from __future__ import annotations
 
 import getpass
 import hashlib
+import os
 import re
 import tempfile
+import uuid
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal, QLockFile
-from PySide6.QtNetwork import QLocalServer, QLocalSocket
+from PySide6.QtCore import QObject, Signal, QLockFile, QTimer
 
 from core.app_paths import app_data_directory
 
 
 class SingleInstance(QObject):
-    """Keep one FinanceTerminal process per Windows user/session.
-
-    QLockFile is the authoritative process lock. QLocalServer/QLocalSocket
-    only carries the activation message. This distinction matters on Windows:
-    named pipes may allow more than one server instance to listen on the same
-    pipe name, so QLocalServer.listen() alone is not a single-instance guard.
-    """
+    """Keep one FinanceTerminal process per Windows user/session."""
 
     activated = Signal()
-    MESSAGE = b"show-window"
 
     @staticmethod
     def server_name() -> str:
@@ -33,83 +34,98 @@ class SingleInstance(QObject):
         return f"FinanceTerminal_{safe_user}_{suffix}"
 
     @staticmethod
-    def _lock_path(server_name: str) -> Path:
-        """Return a stable, per-user lock path; custom names isolate tests."""
-        digest = hashlib.sha256(server_name.encode("utf-8")).hexdigest()[:24]
+    def _storage_root(server_name: str) -> Path:
         if server_name == SingleInstance.server_name():
             root = app_data_directory() / "instance"
         else:
+            # Custom names keep tests isolated and do not touch the user's app data.
             root = Path(tempfile.gettempdir()) / "FinanceTerminal_instance_tests"
         root.mkdir(parents=True, exist_ok=True)
-        return root / f"{digest}.lock"
+        return root
+
+    @staticmethod
+    def _name_digest(server_name: str) -> str:
+        return hashlib.sha256(server_name.encode("utf-8")).hexdigest()[:24]
+
+    @classmethod
+    def _lock_path(cls, server_name: str) -> Path:
+        return cls._storage_root(server_name) / f"{cls._name_digest(server_name)}.lock"
+
+    @classmethod
+    def _request_directory(cls, server_name: str) -> Path:
+        path = cls._storage_root(server_name) / f"{cls._name_digest(server_name)}.requests"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def __init__(self, parent=None, *, server_name: str | None = None):
         super().__init__(parent)
         self._server_name = server_name or self.server_name()
-        self._server = QLocalServer(self)
-        self._server.newConnection.connect(self._accept_connections)
         self._lock_file = QLockFile(str(self._lock_path(self._server_name)))
-        # This lock is intentionally held for the lifetime of the GUI process.
-        # Disable age-based staleness; QLockFile still detects dead local PIDs.
+        # A zero stale timeout means never remove a lock based only on age.
+        # QLockFile still checks whether the owning PID is alive.
         self._lock_file.setStaleLockTime(0)
         self.activation_sent = False
         self.error_string = ""
         self.is_primary = self._start_or_signal_existing()
 
-    def _send_activation(self, attempts: int = 5) -> bool:
-        for _ in range(attempts):
-            socket = QLocalSocket()
-            socket.connectToServer(self._server_name)
-            if socket.waitForConnected(400):
-                socket.write(self.MESSAGE)
-                socket.flush()
-                socket.waitForBytesWritten(500)
-                socket.disconnectFromServer()
-                return True
-            socket.abort()
-        return False
+        self._activation_timer = QTimer(self)
+        self._activation_timer.setInterval(75)
+        self._activation_timer.timeout.connect(self._process_activation_requests)
+        if self.is_primary:
+            self._activation_timer.start()
+
+    def _send_activation(self) -> bool:
+        """Create a unique wake-up request for the primary process."""
+        try:
+            request_dir = self._request_directory(self._server_name)
+            request_file = request_dir / f"{os.getpid()}-{uuid.uuid4().hex}.request"
+            # Exclusive creation makes each launch a distinct, atomic signal.
+            with request_file.open("xb") as handle:
+                handle.write(b"show-window")
+                handle.flush()
+                os.fsync(handle.fileno())
+            return True
+        except OSError as exc:
+            self.error_string = f"Ana uygulamaya uyandırma sinyali gönderilemedi: {exc}"
+            return False
 
     def _start_or_signal_existing(self) -> bool:
-        # The process lock, not the pipe, decides which instance is primary.
         if not self._lock_file.tryLock(0):
             if self._lock_file.error() == QLockFile.LockError.LockFailedError:
                 self.activation_sent = self._send_activation()
-                # Never start another GUI process while a live lock exists,
-                # even if the primary is still initializing its IPC server.
                 return False
             self.error_string = f"Tek uygulama kilidi alınamadı: {self._lock_file.error()}"
             return False
-
-        # We own the lock, so any old endpoint is necessarily stale.
-        if not self._server.listen(self._server_name):
-            QLocalServer.removeServer(self._server_name)
-            if not self._server.listen(self._server_name):
-                self.error_string = self._server.errorString()
-                self._lock_file.unlock()
-                return False
         return True
 
-    def _accept_connections(self) -> None:
-        while self._server.hasPendingConnections():
-            socket = self._server.nextPendingConnection()
-            if socket is None:
-                continue
-            socket.readyRead.connect(lambda s=socket: self._read_message(s))
-            socket.disconnected.connect(socket.deleteLater)
-            if socket.bytesAvailable():
-                self._read_message(socket)
+    def _process_activation_requests(self) -> None:
+        """Consume queued second-launch requests on the GUI event loop."""
+        request_dir = self._request_directory(self._server_name)
+        requests = list(request_dir.glob("*.request"))
+        if not requests:
+            return
 
-    def _read_message(self, socket: QLocalSocket) -> None:
-        message = bytes(socket.readAll())
-        if self.MESSAGE in message:
+        consumed = False
+        for request_file in requests:
+            try:
+                request_file.unlink()
+                consumed = True
+            except FileNotFoundError:
+                continue
+            except OSError:
+                # Leave an unreadable request for the next poll.
+                continue
+
+        if consumed:
+            # Several fast launches should raise the window once, not repeatedly.
             self.activated.emit()
 
     def close(self) -> None:
-        """Release IPC endpoint and process lock if this instance owns them."""
+        """Stop polling and release the process lock if this is the primary."""
+        if self._activation_timer.isActive():
+            self._activation_timer.stop()
         if self.is_primary:
-            if self._server.isListening():
-                self._server.close()
-            QLocalServer.removeServer(self._server_name)
             if self._lock_file.isLocked():
                 self._lock_file.unlock()
             self.is_primary = False
+

@@ -26,23 +26,44 @@ class SingleInstanceTests(unittest.TestCase):
         second = SingleInstance(server_name=name)
         try:
             self.assertFalse(second.is_primary)
-            for _ in range(50):
+            self.assertTrue(second.activation_sent)
+            # The primary consumes the cross-launch request on its Qt event loop.
+            deadline = time.monotonic() + 2.0
+            while not activations and time.monotonic() < deadline:
                 self.app.processEvents()
-                if activations:
-                    break
                 time.sleep(0.01)
             self.assertEqual(activations, [True])
         finally:
             second.close()
             first.close()
 
-        # Once the primary process releases its lock, a fresh launch can
-        # become primary again. The secondary must not remove the primary lock.
+        # Once the primary releases its lock, a fresh launch can become primary.
         third = SingleInstance(server_name=name)
         try:
             self.assertTrue(third.is_primary)
         finally:
             third.close()
+
+    def test_multiple_second_launches_are_coalesced_into_one_activation(self):
+        name = "FinanceTerminal_Test_" + uuid.uuid4().hex
+        first = SingleInstance(server_name=name)
+        self.assertTrue(first.is_primary)
+        activations = []
+        first.activated.connect(lambda: activations.append(True))
+        second_a = SingleInstance(server_name=name)
+        second_b = SingleInstance(server_name=name)
+        try:
+            self.assertFalse(second_a.is_primary)
+            self.assertFalse(second_b.is_primary)
+            deadline = time.monotonic() + 2.0
+            while not activations and time.monotonic() < deadline:
+                self.app.processEvents()
+                time.sleep(0.01)
+            self.assertEqual(activations, [True])
+        finally:
+            second_a.close()
+            second_b.close()
+            first.close()
 
 
 if __name__ == "__main__":
