@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QSizePolicy,
 )
 
 from features.investment_store import (
@@ -61,6 +63,8 @@ class InvestmentPanel(QGroupBox):
         parent=None,
     ):
         super().__init__(title, parent)
+        self.setObjectName("investmentPanel")
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.asset_group = asset_group
         self.assets = assets
         self.store = store or InvestmentStore()
@@ -73,7 +77,11 @@ class InvestmentPanel(QGroupBox):
 
     def _build_ui(self, quantity_label: str) -> None:
         root = QVBoxLayout(self)
+        root.setContentsMargins(12, 18, 12, 10)
+        root.setSpacing(9)
         form = QHBoxLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(8)
 
         self.asset_input = QComboBox()
         for code, (display_name, _unit) in self.assets.items():
@@ -99,6 +107,7 @@ class InvestmentPanel(QGroupBox):
         self.info_label = QLabel(
             "Aynı varlığa yapılan yeni alımlar miktara eklenir ve ağırlıklı ortalama maliyet güncellenir."
         )
+        self.info_label.setObjectName("investmentInfo")
         self.info_label.setWordWrap(True)
         root.addWidget(self.info_label)
 
@@ -126,6 +135,13 @@ class InvestmentPanel(QGroupBox):
         root.addLayout(action_row)
 
         self.table = QTableWidget(0, len(self.HEADERS))
+        self.table.setObjectName("investmentTable")
+        self.table.setFrameShape(QFrame.Shape.NoFrame)
+        self.table.setShowGrid(False)
+        self.table.setAlternatingRowColors(True)
+        self.table.setWordWrap(False)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.table.setHorizontalHeaderLabels(self.HEADERS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -135,11 +151,15 @@ class InvestmentPanel(QGroupBox):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)
         header.setStretchLastSection(False)
-        for column, width in enumerate((150, 105, 125, 155, 145, 155, 145, 125)):
+        header.setMinimumSectionSize(78)
+        header.setDefaultAlignment(Qt.AlignCenter)
+        header.setFixedHeight(40)
+        for column, width in enumerate((112, 88, 108, 132, 118, 132, 118, 108)):
             if column < self.table.columnCount():
                 self.table.setColumnWidth(column, width)
-        self.table.setMinimumHeight(150)
-        root.addWidget(self.table)
+        self.table.setMinimumHeight(230)
+        self.table.verticalHeader().setDefaultSectionSize(36)
+        root.addWidget(self.table, 1)
 
     def set_prices(
         self, prices: dict[str, object], rates_updated_at: str | None = None,

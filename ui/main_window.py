@@ -120,15 +120,11 @@ class MainWindow(QWidget):
         self.update_button = QPushButton("Güncelle")
         self.update_button.clicked.connect(self.update)
 
-        settings_btn = QPushButton("Ayarlar ⚙️")
-        settings_btn.clicked.connect(self.open_settings)
-
         l1.addWidget(self.currency_cards_scroll)
         l1.addWidget(self.currency_settings_button)
         l1.addWidget(self.mode)
         l1.addWidget(self.last)
         l1.addWidget(self.update_button)
-        l1.addWidget(settings_btn)
         l1.addStretch()
 
         # ---------------- OTHER TABS ----------------
@@ -172,6 +168,11 @@ class MainWindow(QWidget):
         self.export_all_button = QPushButton("Tüm Portföyü Excel'e Aktar")
         self.export_all_button.clicked.connect(self.export_complete_portfolio)
         toolbar.addWidget(self.export_all_button)
+        self.settings_button = QPushButton("Ayarlar ⚙️")
+        self.settings_button.setObjectName("globalSettingsButton")
+        self.settings_button.setToolTip("Uygulama ayarlarını aç")
+        self.settings_button.clicked.connect(self.open_settings)
+        toolbar.addWidget(self.settings_button)
         layout.addLayout(toolbar)
         layout.addWidget(self.tabs)
 
@@ -1048,6 +1049,13 @@ class MainWindow(QWidget):
                 QFrame#summaryFrame, QFrame#bistMetricCard, QFrame#bistFormFrame { background: #ffffff; color: #172033; border: 1px solid #d5dde8; border-radius: 7px; }
                 QGroupBox { color: #172033; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 8px; padding-top: 8px; }
                 QGroupBox::title { color: #172033; subcontrol-origin: margin; left: 8px; padding: 0 4px; }
+                QGroupBox#investmentPanel { background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; margin-top:14px; padding:14px 10px 10px 10px; }
+                QGroupBox#investmentPanel::title { color:#172033; left:12px; padding:0 6px; font-weight:700; }
+                QLabel#investmentInfo { color:#64748b; }
+                QLabel#investmentLastUpdate { color:#475569; font-size:10px; }
+                QTableWidget#investmentTable { background:#ffffff; alternate-background-color:#f5f7fb; color:#172033; border:0; gridline-color:transparent; selection-background-color:#dbeafe; selection-color:#172033; }
+                QTableWidget#investmentTable::item { padding:6px 5px; border-bottom:1px solid #edf0f5; }
+                QTableWidget#investmentTable QHeaderView::section { background:#e9eef6; color:#1e293b; border:0; border-bottom:2px solid #cbd5e1; padding:9px 6px; font-weight:700; }
             """)
         elif self.theme == "Blue":
             self.setStyleSheet("""
@@ -1065,6 +1073,13 @@ class MainWindow(QWidget):
                 QFrame#summaryFrame, QFrame#bistMetricCard, QFrame#bistFormFrame { background: #17243a; color: #f4f8ff; border: 1px solid #334b70; border-radius: 7px; }
                 QGroupBox { color: #eaf2ff; border: 1px solid #334b70; border-radius: 6px; margin-top: 8px; padding-top: 8px; }
                 QGroupBox::title { color: #eaf2ff; subcontrol-origin: margin; left: 8px; padding: 0 4px; }
+                QGroupBox#investmentPanel { background:#142238; border:1px solid #35547e; border-radius:10px; margin-top:14px; padding:14px 10px 10px 10px; }
+                QGroupBox#investmentPanel::title { color:#eef5ff; left:12px; padding:0 6px; font-weight:700; }
+                QLabel#investmentInfo { color:#b6c8e2; }
+                QLabel#investmentLastUpdate { color:#9fb6d5; font-size:10px; }
+                QTableWidget#investmentTable { background:#17243a; alternate-background-color:#1c2c45; color:#f4f8ff; border:0; gridline-color:transparent; selection-background-color:#315b88; selection-color:#ffffff; }
+                QTableWidget#investmentTable::item { padding:6px 5px; border-bottom:1px solid #263d5e; }
+                QTableWidget#investmentTable QHeaderView::section { background:#223b61; color:#ffffff; border:0; border-bottom:2px solid #3a86ff; padding:9px 6px; font-weight:700; }
             """)
         else:  # Dark
             self.setStyleSheet("""
@@ -1082,6 +1097,13 @@ class MainWindow(QWidget):
                 QFrame#summaryFrame, QFrame#bistMetricCard, QFrame#bistFormFrame { background: #1b1f25; color: #f4f6f8; border: 1px solid #343a44; border-radius: 7px; }
                 QGroupBox { color: #edf0f4; border: 1px solid #343a44; border-radius: 6px; margin-top: 8px; padding-top: 8px; }
                 QGroupBox::title { color: #edf0f4; subcontrol-origin: margin; left: 8px; padding: 0 4px; }
+                QGroupBox#investmentPanel { background:#191e26; border:1px solid #3b4553; border-radius:10px; margin-top:14px; padding:14px 10px 10px 10px; }
+                QGroupBox#investmentPanel::title { color:#f4f6f8; left:12px; padding:0 6px; font-weight:700; }
+                QLabel#investmentInfo { color:#b5becb; }
+                QLabel#investmentLastUpdate { color:#a1aab7; font-size:10px; }
+                QTableWidget#investmentTable { background:#1b1f25; alternate-background-color:#222832; color:#f4f6f8; border:0; gridline-color:transparent; selection-background-color:#315b88; selection-color:#ffffff; }
+                QTableWidget#investmentTable::item { padding:6px 5px; border-bottom:1px solid #303844; }
+                QTableWidget#investmentTable QHeaderView::section { background:#29313c; color:#f4f6f8; border:0; border-bottom:2px solid #60a5fa; padding:9px 6px; font-weight:700; }
             """)
 
     # ---------------- SETTINGS ----------------
