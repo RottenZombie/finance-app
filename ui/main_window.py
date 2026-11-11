@@ -1,7 +1,7 @@
 from decimal import Decimal
 import sys
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 from pathlib import Path
 
 from PySide6.QtGui import QIcon
@@ -9,7 +9,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QComboBox, QLabel, QPushButton, QDialog, QSizePolicy,
     QFileDialog, QMessageBox, QTextBrowser, QCheckBox, QProgressDialog,
-    QSystemTrayIcon, QMenu, QApplication,
+    QSystemTrayIcon, QMenu, QApplication, QGridLayout, QScrollArea,
+    QListWidget, QListWidgetItem, QInputDialog, QDialogButtonBox,
 )
 
 from worker import Worker
@@ -18,11 +19,19 @@ from features.metals import Metals
 from features.portfolio import Portfolio
 from features.summary import SummaryPage
 from features.bist.portfolio_tab import BistPortfolioTab
+from features.bist.database import BistDatabase
+from features.investment_store import InvestmentStore, format_localized
+from features.currencies import CURRENCY_INFO, DEFAULT_CURRENCY_CODES, currency_display_name
 from features.investment_excel import write_combined_portfolio_excel
+from features.export_metadata import profile_export_filename
+from features.profile_utils import profile_selector_label, MAX_PROFILE_SELECTOR_CHARS
 from features.combined_import import (
     read_combined_portfolio_excel, apply_combined_portfolio_import,
 )
 from core.resources import resource_path
+from core.app_paths import (
+    set_active_profile, migrate_legacy_data_to_profile1, app_data_directory, profile_directory,
+)
 from settings import load, save, resolve_theme
 from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker
 from core.updater import (
@@ -38,8 +47,9 @@ class MainWindow(QWidget):
         self.setWindowTitle("FinanceTerminal")
 
         # ---------------- SETTINGS ----------------
-        self.VERSION = "2.2.9-dev"
+        self.VERSION = "2.3.0-dev"
         self.settings = load()
+        self._initialize_profile_settings()
         self.worker: Worker | None = None
         self._update_check_worker = None
         self._update_download_worker = None
@@ -79,7 +89,6 @@ class MainWindow(QWidget):
         self.tabs = QTabWidget()
         self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # ---------------- SUMMARY ----------------
         self.summary_page = SummaryPage()
         self.tabs.addTab(self.summary_page, "Summary")
 
@@ -87,15 +96,26 @@ class MainWindow(QWidget):
         self.tab1 = QWidget()
         l1 = QVBoxLayout(self.tab1)
 
-        self.usd = Card("USD/TRY")
-        self.eur = Card("EUR/TRY")
-        self.huf = Card("HUF/TRY")
+        self.currency_cards_container = QWidget(self.tab1)
+        self.currency_cards_layout = QGridLayout(self.currency_cards_container)
+        self.currency_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.currency_cards_layout.setHorizontalSpacing(10)
+        self.currency_cards_layout.setVerticalSpacing(10)
+        self.currency_cards_scroll = QScrollArea(self.tab1)
+        self.currency_cards_scroll.setWidgetResizable(True)
+        self.currency_cards_scroll.setWidget(self.currency_cards_container)
+        self.currency_cards_scroll.setMinimumHeight(145)
+        self.currency_cards_scroll.setMaximumHeight(360)
+        self.currency_cards = {}
+        self.refresh_currency_cards()
 
         self.mode = QComboBox()
         self.mode.addItems(["Normal", "Ters"])
         self.mode.currentIndexChanged.connect(self.refresh)
 
         self.last = QLabel("-")
+        self.currency_settings_button = QPushButton("Görüntülenecek Para Birimlerini Seç")
+        self.currency_settings_button.clicked.connect(self.open_currency_settings)
 
         self.update_button = QPushButton("Güncelle")
         self.update_button.clicked.connect(self.update)
@@ -103,9 +123,8 @@ class MainWindow(QWidget):
         settings_btn = QPushButton("Ayarlar ⚙️")
         settings_btn.clicked.connect(self.open_settings)
 
-        l1.addWidget(self.usd)
-        l1.addWidget(self.eur)
-        l1.addWidget(self.huf)
+        l1.addWidget(self.currency_cards_scroll)
+        l1.addWidget(self.currency_settings_button)
         l1.addWidget(self.mode)
         l1.addWidget(self.last)
         l1.addWidget(self.update_button)
@@ -116,6 +135,9 @@ class MainWindow(QWidget):
         self.portfolio = Portfolio()
         self.metals = Metals()
         self.bist_portfolio = BistPortfolioTab()
+        self.bist_portfolio.storage_label.setText(
+            f"Veriler bu bilgisayarda saklanır · {self.profile_names[self.settings['active_profile']]}"
+        )
 
         self.tabs.addTab(self.tab1, "Currency")
         self.tabs.addTab(self.portfolio, "Portfolio")
@@ -134,6 +156,15 @@ class MainWindow(QWidget):
 
         layout = QVBoxLayout(self)
         toolbar = QHBoxLayout()
+        toolbar.addWidget(QLabel("Profil:"))
+        self.profile_selector = QComboBox()
+        self.profile_selector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._refresh_profile_selector()
+        self.profile_selector.currentIndexChanged.connect(self.switch_profile)
+        toolbar.addWidget(self.profile_selector)
+        self.rename_profile_button = QPushButton("Profil Adını Değiştir")
+        self.rename_profile_button.clicked.connect(self.rename_current_profile)
+        toolbar.addWidget(self.rename_profile_button)
         toolbar.addStretch(1)
         self.import_all_button = QPushButton("Tüm Portföyü Excel'den İçe Aktar")
         self.import_all_button.clicked.connect(self.import_complete_portfolio)
@@ -149,6 +180,280 @@ class MainWindow(QWidget):
         self.update()
         # Startup update preference is asked only by the packaged Windows EXE.
         QTimer.singleShot(1400, self._startup_update_check)
+
+
+    # ---------------- PROFILE MANAGEMENT ----------------
+    def _initialize_profile_settings(self) -> None:
+        names = self.settings.get("profile_names")
+        if not isinstance(names, dict):
+            names = {}
+        self.profile_names = {
+            "profile1": str(names.get("profile1") or "Profil 1"),
+            "profile2": str(names.get("profile2") or "Profil 2"),
+        }
+        # Profile 3 is opt-in and appears only after the user selects "Profil Ekle".
+        if names.get("profile3"):
+            self.profile_names["profile3"] = str(names.get("profile3"))
+        active = str(self.settings.get("active_profile", "profile1")).lower()
+        if active not in self.profile_names:
+            active = "profile1"
+        self.settings["profile_names"] = self.profile_names
+        self.settings["active_profile"] = active
+
+        # Copy legacy 2.2.x data once to Profile 1; leave the original data folder
+        # untouched as an additional recovery copy.
+        legacy_data = app_data_directory() / "data"
+        profile1_data = profile_directory("profile1") / "data"
+        if legacy_data.is_dir() and not profile1_data.exists():
+            if not migrate_legacy_data_to_profile1():
+                QMessageBox.warning(
+                    self,
+                    "Eski portföy verileri kopyalanamadı",
+                    "Önceki sürümün veri klasörü değiştirilmedi. FinanceTerminal eski "
+                    "verilerinizi otomatik olarak Profile 1'e kopyalayamadı. "
+                    "Uygulamayı kapatın ve yedek klasörünüzü koruyun.",
+                )
+        set_active_profile(active)
+
+        configured = self.settings.get("currency_codes", DEFAULT_CURRENCY_CODES)
+        if not isinstance(configured, list):
+            configured = DEFAULT_CURRENCY_CODES
+        selected = [code for code in configured if code in CURRENCY_INFO]
+        self.settings["currency_codes"] = selected or DEFAULT_CURRENCY_CODES.copy()
+        save(self.settings)
+
+    def _refresh_profile_selector(self) -> None:
+        if not hasattr(self, "profile_selector"):
+            return
+        self.profile_selector.blockSignals(True)
+        self.profile_selector.clear()
+        for profile_id in ("profile1", "profile2", "profile3"):
+            if profile_id not in self.profile_names:
+                continue
+            full_name = self.profile_names[profile_id]
+            label = profile_selector_label(full_name)
+            self.profile_selector.addItem(label, profile_id)
+            self.profile_selector.setItemData(
+                self.profile_selector.count() - 1, full_name, Qt.ItemDataRole.ToolTipRole
+            )
+
+        # Keep the add action visible even at the limit so the user gets an
+        # explicit explanation instead of silently losing the option.
+        self.profile_selector.addItem("＋ Profil Ekle", "__add_profile__")
+        active_index = self.profile_selector.findData(self.settings.get("active_profile"))
+        self.profile_selector.setCurrentIndex(active_index if active_index >= 0 else 0)
+
+        # Grow with the profile name up to 20 visible characters. Longer names
+        # are elided in the selector, while the full name remains in settings.
+        metrics = self.profile_selector.fontMetrics()
+        visible_names = [
+            profile_selector_label(name)
+            for name in self.profile_names.values()
+        ]
+        visible_width = max(
+            (metrics.horizontalAdvance(name) for name in visible_names),
+            default=metrics.horizontalAdvance("Profil 1"),
+        )
+        max_text_width = metrics.horizontalAdvance("M" * MAX_PROFILE_SELECTOR_CHARS + "...")
+        self.profile_selector.setFixedWidth(min(visible_width, max_text_width) + 48)
+        self.profile_selector.blockSignals(False)
+
+    def add_profile(self) -> None:
+        """Create the optional third profile and switch to its empty data store."""
+        if "profile3" in self.profile_names:
+            QMessageBox.information(
+                self,
+                "Maksimum profil sayısı",
+                "Maksimum profil limitine ulaşılmıştır. Ekstra profil için GitHub üzerinden Issue açınız.",
+            )
+            self._refresh_profile_selector()
+            return
+
+        self.profile_names["profile3"] = "Profil 3"
+        self.settings["profile_names"] = self.profile_names
+        try:
+            save(self.settings)
+        except Exception as exc:
+            self.profile_names.pop("profile3", None)
+            self.settings["profile_names"] = self.profile_names
+            QMessageBox.warning(self, "Profil oluşturulamadı", str(exc))
+            self._refresh_profile_selector()
+            return
+
+        self._refresh_profile_selector()
+        profile_index = self.profile_selector.findData("profile3")
+        if profile_index >= 0:
+            self.profile_selector.setCurrentIndex(profile_index)
+
+    def switch_profile(self, index: int) -> None:
+        if index < 0 or not hasattr(self, "portfolio"):
+            return
+        selected_data = self.profile_selector.itemData(index)
+        if selected_data == "__add_profile__":
+            self.add_profile()
+            return
+        profile_id = str(selected_data or "profile1")
+        if profile_id not in self.profile_names:
+            self._refresh_profile_selector()
+            return
+        if profile_id == self.settings.get("active_profile"):
+            return
+        previous_profile = str(self.settings.get("active_profile", "profile1"))
+        previous_currency_store = self.portfolio.investment_panel.store
+        previous_metals_store = self.metals.investment_panel.store
+        previous_bist_database = self.bist_portfolio.database
+        try:
+            set_active_profile(profile_id)
+            # Create all target repositories before swapping any live UI references.
+            currency_store = InvestmentStore()
+            metals_store = InvestmentStore()
+            bist_database = BistDatabase()
+            self.portfolio.investment_panel.store = currency_store
+            self.metals.investment_panel.store = metals_store
+            self.bist_portfolio.database = bist_database
+            self.portfolio.investment_panel.refresh_table()
+            self.metals.investment_panel.refresh_table()
+            self.bist_portfolio.refresh_table()
+            self.settings["active_profile"] = profile_id
+            save(self.settings)
+            self.bist_portfolio.storage_label.setText(
+                f"Veriler bu bilgisayarda saklanır · {self.profile_names[profile_id]}"
+            )
+            self.refresh_summary()
+        except Exception as exc:
+            self.portfolio.investment_panel.store = previous_currency_store
+            self.metals.investment_panel.store = previous_metals_store
+            self.bist_portfolio.database = previous_bist_database
+            set_active_profile(previous_profile)
+            self.settings["active_profile"] = previous_profile
+            try:
+                save(self.settings)
+            except Exception:
+                pass
+            self.portfolio.investment_panel.refresh_table()
+            self.metals.investment_panel.refresh_table()
+            self.bist_portfolio.refresh_table()
+            QMessageBox.critical(self, "Profil değiştirilemedi", str(exc))
+            self._refresh_profile_selector()
+
+    def rename_current_profile(self) -> None:
+        profile_id = str(self.settings.get("active_profile", "profile1"))
+        if profile_id not in self.profile_names:
+            return
+        old_name = self.profile_names[profile_id]
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Profil adını değiştir")
+        dialog.setLabelText("Yeni profil adı:")
+        dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        dialog.setTextValue(old_name)
+        dialog.setOkButtonText("Kaydet")
+        dialog.setCancelButtonText("Vazgeç")
+        # Do not truncate the entered value: the selector shows an ellipsis
+        # after 20 visible characters, but Excel receives the full profile name.
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        new_name = str(dialog.textValue()).strip()
+        if not new_name:
+            QMessageBox.warning(self, "Geçersiz ad", "Profil adı boş bırakılamaz.")
+            return
+        if any(
+            other_id != profile_id and other_name.casefold() == new_name.casefold()
+            for other_id, other_name in self.profile_names.items()
+        ):
+            QMessageBox.warning(self, "Profil adı kullanılıyor", "Profillerin adı aynı olamaz.")
+            return
+        previous_name = self.profile_names[profile_id]
+        self.profile_names[profile_id] = new_name
+        self.settings["profile_names"] = self.profile_names
+        try:
+            save(self.settings)
+        except Exception as exc:
+            self.profile_names[profile_id] = previous_name
+            self.settings["profile_names"] = self.profile_names
+            QMessageBox.warning(self, "Profil adı kaydedilemedi", str(exc))
+            self._refresh_profile_selector()
+            return
+        self._refresh_profile_selector()
+        self.bist_portfolio.storage_label.setText(
+            f"Veriler bu bilgisayarda saklanır · {new_name}"
+        )
+
+    # ---------------- CURRENCY DISPLAY OPTIONS ----------------
+    def refresh_currency_cards(self) -> None:
+        if not hasattr(self, "currency_cards_layout"):
+            return
+        while self.currency_cards_layout.count():
+            item = self.currency_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.currency_cards = {}
+        codes = [
+            code for code in self.settings.get("currency_codes", DEFAULT_CURRENCY_CODES)
+            if code in CURRENCY_INFO
+        ] or DEFAULT_CURRENCY_CODES
+        for index, code in enumerate(codes):
+            card = Card(f"{code}/TRY", currency_display_name(code))
+            card.title.setToolTip(CURRENCY_INFO[code][0])
+            card.value.setText("...")
+            card.apply_theme(self.theme)
+            self.currency_cards[code] = card
+            self.currency_cards_layout.addWidget(card, index // 3, index % 3)
+        if hasattr(self, "last_data"):
+            self.on_data(self.last_data)
+
+    def open_currency_settings(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Görüntülenecek Para Birimleri")
+        dlg.setMinimumSize(360, 470)
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(QLabel(
+            "Currency sekmesinde görmek istediğiniz para birimlerini seçin. "
+            "Kur sağlayıcısında bulunmayan birimlerde güncel fiyat gösterilemez."
+        ))
+        selection_actions = QHBoxLayout()
+        select_all_button = QPushButton("Tümünü Seç")
+        clear_selection_button = QPushButton("Seçimi Temizle")
+        selection_actions.addWidget(select_all_button)
+        selection_actions.addWidget(clear_selection_button)
+        layout.addLayout(selection_actions)
+
+        listing = QListWidget(dlg)
+        current = set(self.settings.get("currency_codes", DEFAULT_CURRENCY_CODES))
+        for code, (name, _unit) in CURRENCY_INFO.items():
+            item = QListWidgetItem(f"{code} — {name}")
+            item.setData(Qt.UserRole, code)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked if code in current else Qt.Unchecked)
+            listing.addItem(item)
+        def set_all_currency_checks(state):
+            for index in range(listing.count()):
+                listing.item(index).setCheckState(state)
+
+        select_all_button.clicked.connect(
+            lambda _checked=False: set_all_currency_checks(Qt.Checked)
+        )
+        clear_selection_button.clicked.connect(
+            lambda _checked=False: set_all_currency_checks(Qt.Unchecked)
+        )
+        layout.addWidget(listing)
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        selected = [
+            listing.item(i).data(Qt.UserRole)
+            for i in range(listing.count())
+            if listing.item(i).checkState() == Qt.Checked
+        ]
+        if not selected:
+            QMessageBox.warning(self, "Seçim gerekli", "En az bir para birimi seçmelisiniz.")
+            return
+        self.settings["currency_codes"] = selected
+        save(self.settings)
+        self.refresh_currency_cards()
 
     # ---------------- SUMMARY ----------------
     @staticmethod
@@ -173,10 +478,13 @@ class MainWindow(QWidget):
 
     # ---------------- COMBINED PORTFOLIO EXPORT ----------------
     def export_complete_portfolio(self):
+        profile_id = str(self.settings.get("active_profile", "profile1"))
+        profile_name = self.profile_names[profile_id]
+        suggested_filename = profile_export_filename(profile_name, profile_id)
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Tüm portföyü tek Excel dosyasına aktar",
-            str(Path.home() / "FinanceTerminal_Tum_Portfoy.xlsx"),
+            str(Path.home() / suggested_filename),
             "Excel dosyaları (*.xlsx)",
         )
         if not path:
@@ -201,6 +509,7 @@ class MainWindow(QWidget):
                 try_per_eur=eur_rate,
                 rates_updated_at=rates.get("fetched_at"),
                 rates_status=rates.get("status"),
+                profile_name=profile_name,
             )
             QMessageBox.information(
                 self,
@@ -454,7 +763,10 @@ class MainWindow(QWidget):
     def fmt(self, v):
         if v is None:
             return "N/A"
-        return f"{v:.{self.precision}f}"
+        try:
+            return format_localized(Decimal(str(v)), decimals=self.precision)
+        except Exception:
+            return "N/A"
 
     # ---------------- SYSTEM TRAY ----------------
     def _init_system_tray(self) -> None:
@@ -651,28 +963,25 @@ class MainWindow(QWidget):
     def on_data(self, d):
         self.last_data = d
 
-        if self.mode.currentText() == "Ters":
-            self.usd.title.setText("TRY/USD")
-            self.eur.title.setText("TRY/EUR")
-            self.huf.title.setText("TRY/HUF")
-
-            self.usd.value.setText(self.fmt(1 / d["USD"] if d.get("USD") else None))
-            self.eur.value.setText(self.fmt(1 / d["EUR"] if d.get("EUR") else None))
-            self.huf.value.setText(self.fmt(1 / d["HUF"] if d.get("HUF") else None))
-        else:
-            self.usd.title.setText("USD/TRY")
-            self.eur.title.setText("EUR/TRY")
-            self.huf.title.setText("HUF/TRY")
-
-            self.usd.value.setText(self.fmt(d["USD"]))
-            self.eur.value.setText(self.fmt(d["EUR"]))
-            self.huf.value.setText(self.fmt(d["HUF"]))
+        for code, card in self.currency_cards.items():
+            rate = d.get(code)
+            if self.mode.currentText() == "Ters":
+                card.title.setText(f"TRY/{code}")
+                try:
+                    inverse = 1 / float(rate) if rate is not None and float(rate) > 0 else None
+                except (TypeError, ValueError, ZeroDivisionError):
+                    inverse = None
+                card.value.setText(self.fmt(inverse))
+            else:
+                card.title.setText(f"{code}/TRY")
+                card.value.setText(self.fmt(rate))
 
         self.portfolio.set_rates(d)
         self.metals.set_rates(
             d.get("gold"),
             d.get("silver"),
             d.get("USD"),
+            eur_try=d.get("EUR"),
             rates_updated_at=d.get("fetched_at"),
             rates_status=d.get("status"),
         )
@@ -688,6 +997,8 @@ class MainWindow(QWidget):
 
     # ---------------- THEME ----------------
     def apply_theme(self):
+        for card in getattr(self, "currency_cards", {}).values():
+            card.apply_theme(self.theme)
         if self.theme == "White":
             self.setStyleSheet("""
                 QWidget { background: #f4f6fa; color: #172033; }
@@ -851,21 +1162,24 @@ class MainWindow(QWidget):
         bulunmadığından hisse toplamı kayıtlı alış maliyeti üzerinden hesaplanır.</p>
 
         <h3>Currency</h3>
-        <p>USD, EUR ve HUF kurlarını gösterir. <b>Normal</b> görünümde dövizin TL
-        karşılığını, <b>Ters</b> görünümde TL'nin döviz karşılığını gösterir.
-        <b>Güncelle</b> düğmesi fiyat verilerini internetten yeniler.</p>
+        <p>USD, EUR, HUF ve seçtiğiniz diğer desteklenen para birimlerinin kurlarını gösterir.
+        <b>Görüntülenecek Para Birimlerini Seç</b> düğmesiyle kartları kişiselleştirebilirsiniz.
+        <b>Normal</b> görünümde dövizin TL karşılığını, <b>Ters</b> görünümde TL'nin döviz
+        karşılığını gösterir. CHF İsviçre Frangı, CZK Çek Korunası kodudur.</p>
 
         <h3>Portfolio</h3>
-        <p>USD, EUR ve HUF alımlarınızı miktar ve alış birim fiyatıyla kaydedin.
+        <p>Desteklenen döviz alımlarınızı miktar ve alış birim fiyatıyla kaydedin.
         Aynı dövizden tekrar alım yaptığınızda miktar birleştirilir ve ağırlıklı
-        ortalama maliyet hesaplanır. Güncel değer ve kâr/zarar fiyat verisi varsa
-        otomatik gösterilir. Excel içe/dışa aktarma seçeneklerini kullanabilirsiniz.</p>
+        ortalama maliyet hesaplanır. Kayıt üzerinde çift tıklayarak mevcut toplam
+        miktarı ve ortalama maliyeti düzenleyebilirsiniz. Büyük tutarlar binlik
+        ayraçlarla biçimlendirilir.</p>
 
         <h3>Metals</h3>
         <p>Altın ve gümüş alımlarınızı gram miktarı ve alış fiyatıyla kaydedin.
         Tekrarlanan alımlar birleştirilir; ortalama maliyet, güncel değer ve
-        kâr/zarar hesaplanır. Güncel değerler sağlayıcıdan alınan spot fiyatlara
-        dayanır; kuyumcu işçilik ve alış-satış farklarını içermez.</p>
+        kâr/zarar hesaplanır. Kayıt üzerinde çift tıklayarak miktar ve ortalama
+        maliyeti düzenleyebilirsiniz. EUR karşılığı güncel EUR/TRY kuruyla hesaplanır.
+        Güncel değerler spot fiyatlara dayanır; işçilik ve alış-satış farklarını içermez.</p>
 
         <h3>BIST AI</h3>
         <p>Hisse kodu, şirket adı, adet ve ortalama alış maliyetinizi kaydedin.
@@ -884,6 +1198,13 @@ class MainWindow(QWidget):
         <b>Tüm Kayıtları Sil</b> ilgili bölümün bütün kayıtlarını temizler ve ayrıca onay ister.
         Silme işlemi geri alınamaz; gerekirse önce Excel dışa aktarımıyla yedek alın.</p>
 
+        <h3>Profiller</h3>
+        <p>Üst bölümdeki Profil menüsünden en fazla üç profil kullanabilirsiniz. Profil 1 ve Profil 2
+        hazır gelir; Profil Ekle seçeneği üçüncü profili oluşturur. Her profilin döviz, maden ve BIST
+        kayıtları ayrıdır. Profil adları uzun olabilir; menüde 20 karakterden sonrası kısaltılır,
+        Excel dışa aktarımında tam profil adı korunur. Üçüncü profilden sonra yeni profil eklemek
+        için GitHub üzerinden Issue açmanız gerekir.</p>
+
         <h3>Ayarlar</h3>
         <p>Başlangıç sekmesini, sayı hassasiyetini ve temayı seçebilirsiniz.
         <b>Windows ayarını takip et</b> seçeneği sisteminizin açık/koyu temasını
@@ -898,8 +1219,10 @@ class MainWindow(QWidget):
 
         <h3>Uygulama verileri ve tek örnek</h3>
         <p>Ayarlar ve portföy verileri Windows kullanıcı profilinizdeki
-        %APPDATA%\FinanceTerminal klasöründe saklanır. Böylece masaüstünde config.json
-        dosyası oluşmaz ve uygulama güncellendiğinde kayıtlarınız silinmez. FinanceTerminal
+        %APPDATA%\FinanceTerminal klasöründe saklanır. Profil verileri
+        profiles\profile1\data, profiles\profile2\data ve (oluşturulursa)
+        profiles\profile3\data klasörlerinde ayrı tutulur.
+        Böylece masaüstünde config.json dosyası oluşmaz ve uygulama güncellendiğinde kayıtlarınız silinmez. FinanceTerminal
         zaten açıksa EXE'yi yeniden başlatmak yeni pencere oluşturmaz; açık pencereyi öne getirir.</p>
 
         <p><i>Not: Uygulamadaki fiyatlar bilgilendirme ve portföy takibi içindir.

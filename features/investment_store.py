@@ -15,10 +15,11 @@ from openpyxl.utils import get_column_letter
 
 from features.export_metadata import add_export_metadata_sheet
 from core.app_paths import data_directory
+from features.currencies import CURRENCY_INFO
 
 
 ALLOWED_ASSETS = {
-    "currency": {"USD", "EUR", "HUF"},
+    "currency": set(CURRENCY_INFO),
     "metals": {"XAU", "XAG"},
 }
 

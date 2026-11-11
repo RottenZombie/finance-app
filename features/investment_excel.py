@@ -215,6 +215,7 @@ def write_combined_portfolio_excel(
     try_per_eur: Decimal | None,
     rates_updated_at: str | None = None,
     rates_status: str | None = None,
+    profile_name: str | None = None,
 ) -> None:
     """Create one workbook with an executive Summary followed by detailed asset sheets."""
     workbook = Workbook()
@@ -222,7 +223,10 @@ def write_combined_portfolio_excel(
     summary.title = "Summary"
     summary.append(["FinanceTerminal | Portföy Özeti"])
     summary.append(["Anlık kayıt özeti. Döviz ve maden güncel fiyatları; BIST ise canlı fiyat verisi olmadığı için kayıtlı alış maliyeti üzerinden hesaplanır."])
-    summary.append([])
+    if profile_name:
+        summary.append(["Bu dosya şu profile aittir", profile_name])
+    else:
+        summary.append([])
     summary.append(["Portföy", "Hesaplama Esası", "TRY", "EUR", "USD"])
 
     currency_cost, currency_value = _append_investment_sheet(
@@ -288,6 +292,12 @@ def write_combined_portfolio_excel(
     summary["A1"].fill = PatternFill("solid", fgColor="203864")
     summary["A2"].alignment = Alignment(wrap_text=True, vertical="center")
     summary.row_dimensions[2].height = 34
+    if profile_name:
+        summary["A3"].font = Font(bold=True, color="203864")
+        summary["B3"].font = Font(bold=True, color="172033")
+        summary["A3"].alignment = Alignment(vertical="center", wrap_text=True)
+        summary["B3"].alignment = Alignment(vertical="center", wrap_text=True)
+        summary.row_dimensions[3].height = 30
     for cell in summary[4]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="203864")
@@ -306,7 +316,8 @@ def write_combined_portfolio_excel(
     summary.freeze_panes = "A5"
 
     add_export_metadata_sheet(
-        workbook, rates_updated_at=rates_updated_at, rates_status=rates_status
+        workbook, rates_updated_at=rates_updated_at, rates_status=rates_status,
+        profile_name=profile_name,
     )
 
     # Summary must always be the first worksheet.

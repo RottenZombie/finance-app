@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
+import unicodedata
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -15,12 +17,25 @@ def local_timestamp() -> str:
     return datetime.now().astimezone().strftime("%d.%m.%Y %H:%M:%S %Z").strip()
 
 
+def profile_export_filename(profile_name: str, profile_id: str | None = None) -> str:
+    """Return a filesystem-safe, profile-specific combined workbook name."""
+    raw = str(profile_name or "Profil").strip() or "Profil"
+    raw = raw.translate(str.maketrans({"ı": "i", "İ": "I"}))
+    folded = unicodedata.normalize("NFKD", raw)
+    ascii_name = "".join(char for char in folded if not unicodedata.combining(char))
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", ascii_name).strip("_") or "Profil"
+    identity = str(profile_id or "").strip().lower()
+    prefix = f"{identity.title()}_" if identity in {"profile1", "profile2", "profile3"} else ""
+    return f"FinanceTerminal_{prefix}{slug}_Tum_Portfoy.xlsx"
+
+
 def add_export_metadata_sheet(
     workbook: Workbook,
     *,
     rates_updated_at: str | None = None,
     rates_status: str | None = None,
     include_bist_note: bool = True,
+    profile_name: str | None = None,
 ) -> None:
     """Append a human-readable provenance sheet without changing import headers."""
     sheet = workbook.create_sheet("Veri Bilgisi")
@@ -37,6 +52,8 @@ def add_export_metadata_sheet(
     if include_bist_note:
         sheet.append(["Hisse fiyat bilgisi", "Bu sürümde canlı BIST fiyatı yoktur; kayıtlı alış maliyeti kullanılır."])
     sheet.append(["Not", "Fiyatlar dışa aktarım sırasında uygulamada bulunan son veri değerleridir; bu dosya fiyat geçmişi oluşturmaz."])
+    if profile_name:
+        sheet.append(["Bu dosyanın ait olduğu profil", profile_name])
 
     sheet.merge_cells("A1:B1")
     sheet["A1"].font = Font(size=15, bold=True, color="FFFFFF")

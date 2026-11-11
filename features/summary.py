@@ -36,7 +36,7 @@ class SummaryPage(QWidget):
         title.setObjectName("summaryTitle")
         root.addWidget(title)
 
-        subtitle = QLabel("Döviz ve maden güncel değerleri, hisse senetleri kayıtlı maliyet üzerinden gösterilir.")
+        subtitle = QLabel("Döviz ve maden güncel piyasa değeriyle, BIST portföyü kayıtlı alış maliyetiyle gösterilir.")
         subtitle.setObjectName("summarySubtitle")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle)
@@ -58,8 +58,8 @@ class SummaryPage(QWidget):
         rows = [
             ("currency", "Toplam Döviz"),
             ("metals", "Toplam Maden"),
-            ("bist", "Toplam Hisse Senedi*"),
-            ("total", "GENEL TOPLAM"),
+            ("bist", "Toplam Hisse Senedi (maliyet)"),
+            ("total", "GENEL TOPLAM*"),
         ]
         for row_index, (key, title_text) in enumerate(rows, start=1):
             name = QLabel(title_text)
@@ -80,10 +80,12 @@ class SummaryPage(QWidget):
 
         root.addWidget(frame)
         note = QLabel(
-            "K/Z sütunu gerçekleşmemiş kâr/zararı TL olarak gösterir. Genel K/Z toplamı "
-            "yalnızca güncel fiyatı bulunan Döviz ve Maden varlıklarını kapsar; BIST AI "
-            "bölümünde canlı hisse fiyatı henüz bulunmadığı için hisse kâr/zararı hesaplanmaz. "
-            "Hisse senedi toplamı kayıtlı alış maliyetidir."
+            "K/Z sütunu gerçekleşmemiş kâr/zararı TL olarak gösterir. Genel K/Z yalnızca Döviz ve "
+            "Maden kayıtlarını kapsar; BIST AI bölümünde canlı hisse fiyatı bulunmadığı için "
+            "hisse kâr/zararı hesaplanmaz. *Genel toplam, döviz ve madenin güncel değerleri ile "
+            "BIST hisselerinin kayıtlı alış maliyetinin toplamıdır. Bir gruptaki varlıklardan "
+            "birinin güncel fiyatı eksikse o grubun toplamı ve K/Z değeri eksik gösterilir; "
+            "eksik fiyat varsayılarak kâr hesaplanmaz."
         )
         note.setObjectName("summaryNote")
         note.setWordWrap(True)

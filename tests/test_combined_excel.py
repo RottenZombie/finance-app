@@ -6,6 +6,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from features.investment_excel import read_investment_holdings_excel, write_combined_portfolio_excel
+from features.export_metadata import profile_export_filename
 from features.investment_store import InvestmentStore
 from features.bist.database import BistDatabase
 from features.bist.excel_io import read_portfolio_excel
@@ -45,11 +46,14 @@ class CombinedExcelTests(unittest.TestCase):
             bist_holdings=self.bist.list_holdings(),
             try_per_usd=Decimal("32"),
             try_per_eur=Decimal("35"),
+            profile_name="Benim Portföyüm",
         )
 
         workbook = load_workbook(path, data_only=True)
         self.assertEqual(workbook.sheetnames, ["Summary", "Döviz", "Maden", "Hisse Senedi", "Veri Bilgisi"])
         summary = workbook["Summary"]
+        self.assertEqual(summary["A3"].value, "Bu dosya şu profile aittir")
+        self.assertEqual(summary["B3"].value, "Benim Portföyüm")
         self.assertEqual(summary["A5"].value, "Döviz")
         self.assertEqual(summary["C5"].value, 320.0)
         self.assertEqual(summary["A7"].value, "Hisse Senedi")
@@ -72,8 +76,45 @@ class CombinedExcelTests(unittest.TestCase):
         self.assertNotIn("/v6/latest/", visible_sources)
         self.assertNotIn("/price/XAU", visible_sources)
         self.assertNotIn("/price/XAG", visible_sources)
+        self.assertEqual(metadata["A13"].value, "Bu dosyanın ait olduğu profil")
+        self.assertEqual(metadata["B13"].value, "Benim Portföyüm")
         self.assertTrue(metadata["B6"].hyperlink)
         self.assertTrue(metadata["B8"].hyperlink)
+        workbook.close()
+
+    def test_profile_export_filename_is_unique_and_safe(self):
+        first = profile_export_filename("Benim Portföyüm", "profile1")
+        second = profile_export_filename("Arkadaşım", "profile2")
+        self.assertEqual(first, "FinanceTerminal_Profile1_Benim_Portfoyum_Tum_Portfoy.xlsx")
+        self.assertEqual(second, "FinanceTerminal_Profile2_Arkadasim_Tum_Portfoy.xlsx")
+        third = profile_export_filename("Uzun Profil Adı", "profile3")
+        self.assertEqual(third, "FinanceTerminal_Profile3_Uzun_Profil_Adi_Tum_Portfoy.xlsx")
+        self.assertNotEqual(first, second)
+        self.assertNotEqual(second, third)
+        self.assertNotIn("/", profile_export_filename("../../Özel Profil", "profile2"))
+
+    def test_full_long_profile_name_is_preserved_in_excel(self):
+        long_profile_name = "Bu Profil Adı Yirmi Karakterden Çok Daha Uzun"
+        path = self.root / "long_profile.xlsx"
+        write_combined_portfolio_excel(
+            path,
+            currency_holdings=[],
+            currency_prices={},
+            metal_holdings=[],
+            metal_prices={},
+            bist_holdings=[],
+            try_per_usd=None,
+            try_per_eur=None,
+            profile_name=long_profile_name,
+        )
+        workbook = load_workbook(path, data_only=True)
+        self.assertEqual(workbook["Summary"]["B3"].value, long_profile_name)
+        metadata = workbook["Veri Bilgisi"]
+        profile_row = next(
+            row for row in range(1, metadata.max_row + 1)
+            if metadata.cell(row, 1).value == "Bu dosyanın ait olduğu profil"
+        )
+        self.assertEqual(metadata.cell(profile_row, 2).value, long_profile_name)
         workbook.close()
 
     def test_currency_import_reads_combined_workbook_and_bist_import_skips_summary(self):

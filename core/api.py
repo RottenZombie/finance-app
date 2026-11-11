@@ -1,37 +1,60 @@
+from __future__ import annotations
+
+from typing import Any
+
 import requests
+
+from features.currencies import CURRENCY_INFO
 
 API = "https://open.er-api.com/v6/latest"
 
 
-def get_all_rates():
+def get_all_rates() -> dict[str, Any]:
+    """Return TRY prices for supported currencies using the provider's USD base.
+
+    The provider returns the number of foreign-currency units per one USD.
+    Dividing USD/TRY by that rate gives the TRY value of one unit of each
+    foreign currency. TRY itself is always exactly 1 TRY.
+    """
+    empty = {code: None for code in CURRENCY_INFO}
+    empty.update({"TRY": 1.0, "status": "Offline"})
     try:
-        data = requests.get(f"{API}/USD", timeout=5).json()
-        rates = data.get("rates", {})
+        response = requests.get(f"{API}/USD", timeout=8)
+        response.raise_for_status()
+        data = response.json()
+        rates = data.get("rates") or {}
         usd_try = rates.get("TRY")
+        if not isinstance(usd_try, (int, float)) or usd_try <= 0:
+            raise ValueError("Kur sağlayıcısından USD/TRY bilgisi alınamadı.")
 
-        return {
-            "USD": usd_try,
-            "EUR": usd_try / rates.get("EUR") if rates.get("EUR") else None,
-            "HUF": usd_try / rates.get("HUF") if rates.get("HUF") else None,
-            "status": "Online"
-        }
-    except:
-        return {"USD": None, "EUR": None, "HUF": None, "status": "Offline"}
+        result: dict[str, Any] = {"TRY": 1.0, "USD": float(usd_try)}
+        for code in CURRENCY_INFO:
+            if code == "USD":
+                continue
+            foreign_per_usd = rates.get(code)
+            if isinstance(foreign_per_usd, (int, float)) and foreign_per_usd > 0:
+                result[code] = float(usd_try) / float(foreign_per_usd)
+            else:
+                result[code] = None
+        result["status"] = "Online"
+        return result
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        return empty
+    except Exception:
+        # An unexpected provider response must not stop the rest of the app.
+        return empty
 
 
-def get_metal_prices():
+def get_metal_prices() -> tuple[float, float]:
     try:
-        gold = requests.get("https://api.gold-api.com/price/XAU", timeout=5).json()
-        silver = requests.get("https://api.gold-api.com/price/XAG", timeout=5).json()
-
-        print("GOLD RAW:", gold)
-        print("SILVER RAW:", silver)
-
+        gold_response = requests.get("https://api.gold-api.com/price/XAU", timeout=8)
+        silver_response = requests.get("https://api.gold-api.com/price/XAG", timeout=8)
+        gold_response.raise_for_status()
+        silver_response.raise_for_status()
+        gold = gold_response.json()
+        silver = silver_response.json()
         gold_price = gold.get("price", 0)
         silver_price = silver.get("price", 0)
-
-        return gold_price, silver_price
-
-    except Exception as e:
-        print("METAL API ERROR:", e)
-        return 0, 0
+        return float(gold_price or 0), float(silver_price or 0)
+    except Exception:
+        return 0.0, 0.0

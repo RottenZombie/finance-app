@@ -6,11 +6,11 @@
 [![Logo](assets/finance_terminal.png)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 
 
-# FinanceTerminal 2.2.9
+# FinanceTerminal 2.3.0
 
 A lightweight Windows desktop application for currency conversion and personal portfolio tracking. Built with Python and PySide6, with local SQLite storage for investment records.
 
-**Latest stable version:** `2.2.9`  
+**Development target:** `2.3.0`  
 **Platform:** Windows x64  
 **Download:** [![Toplam İndirme](https://img.shields.io/github/downloads/RottenZombie/finance-app/total?color=blue&label=Downloads)](https://github.com/RottenZombie/finance-app/releases/latest)
 
@@ -25,21 +25,26 @@ A lightweight Windows desktop application for currency conversion and personal p
 - BIST holdings are shown at recorded acquisition cost until a live BIST price feed is added. BIST is therefore excluded from market-based unrealized profit/loss.
 
 ### Currency
-- USD/TRY, EUR/TRY, and HUF/TRY rates.
+- USD/TRY, EUR/TRY, HUF/TRY, and additional supported foreign-currency rates.
+- Choose which currency cards are visible; CHF (Swiss franc), CZK (Czech koruna), and other supported currencies can be enabled.
 - Normal and inverse conversion display.
 - Manual rate refresh.
-- Saved USD, EUR, and HUF purchases with quantity and weighted-average acquisition cost.
+- Saved holdings for supported currencies with quantity and weighted-average acquisition cost.
 - Current TRY valuation and unrealized profit/loss when a current quote is available.
 
 ### Portfolio
 - Track saved currency purchases separately from the currency converter.
 - Repeated purchases of the same currency are merged using weighted-average acquisition cost.
+- Double-click a saved row to edit its total quantity and average acquisition cost.
+- Large TRY amounts use Turkish thousands separators and decimal formatting.
 - View quantity, average cost, total cost, current price, current value, and unrealized profit/loss.
 - Import and export portfolio records using Excel.
 
 ### Metals
 - Track gold and silver purchases by gram.
 - Repeated purchases of the same metal are merged using weighted-average acquisition cost.
+- Double-click a saved row to edit its total quantity and average acquisition cost.
+- Large gram quantities and TRY amounts use readable Turkish number formatting.
 - View quantity, average cost, total cost, current gram price, current value, and unrealized profit/loss.
 - Import and export metal holdings using Excel.
 
@@ -51,7 +56,7 @@ A lightweight Windows desktop application for currency conversion and personal p
 - Excel import/export.
 - Resizable table columns.
 
-> **Current limitation:** BIST AI is currently a local portfolio-management foundation. Live BIST prices, market-value and unrealized-return calculations, KAP scanning, and AI recommendations are not included in version 2.2.9. No broker login or automatic order placement is provided.
+> **Current limitation:** BIST AI is currently a local portfolio-management foundation. Live BIST prices, market-value and unrealized-return calculations, KAP scanning, and AI recommendations are not included in version 2.3.0. No broker login or automatic order placement is provided.
 
 ---
 
@@ -87,6 +92,7 @@ Metal valuation uses the application's spot-price feed converted to TRY per gram
 - Tables allow users to resize columns.
 - Close-to-system-tray behavior can be selected and remembered from Settings. The tray menu can restore the main window or exit the application.
 - When minimized to the tray, the application retains the latest displayed values. It does not perform background price refreshes; refresh remains manual.
+- Two independent profiles can be selected from the top bar; each has separate Currency, Metals, and BIST records, and each profile name can be changed.
 - Single-instance protection prevents multiple copies from opening. Starting the executable again restores/activates the existing application.
 - Automatic update checks can be enabled or disabled from Settings. The application can check GitHub Releases at startup and also supports a manual update check.
 - When a newer release is found, the user is asked before it is downloaded and installed. The updater replaces the application executable; portfolio databases and settings are kept in the user's application-data directory.
@@ -96,15 +102,16 @@ Metal valuation uses the application's spot-price feed converted to TRY per gram
 
 ## Data storage and privacy
 
-Portfolio data is stored locally in SQLite under the current user's application-data directory. The databases are not uploaded by the application.
+Portfolio data is stored locally in SQLite under the current user's application-data directory. Up to three profiles can be used; Profile 1 and Profile 2 are available initially, and Profile 3 is created from the Profile Add option. Each profile uses a separate database folder; the databases are not uploaded by the application.
 
 Typical Windows locations:
 
 - Settings: `%APPDATA%\\FinanceTerminal\\config.json`
-- BIST: `%APPDATA%\\FinanceTerminal\\data\\bist_portfolio.db`
-- Currency / Metals: `%APPDATA%\\FinanceTerminal\\data\\investment_holdings.db`
+- Profile 1 BIST: `%APPDATA%\\FinanceTerminal\\profiles\\profile1\\data\\bist_portfolio.db`
+- Profile 1 Currency / Metals: `%APPDATA%\\FinanceTerminal\\profiles\\profile1\\data\\investment_holdings.db`
+- Profile 2 databases use the same paths under `profiles\\profile2\\data`.
 
-If an older installation has its `config.json` next to the executable, the application migrates that configuration into the application-data directory on startup. Portfolio databases remain in the application-data directory and are not stored beside the executable.
+If an older installation has its `config.json` next to the executable, the application migrates that configuration into the application-data directory on startup. On first launch of version 2.3.0, the existing 2.2.x `data` folder is copied into Profile 1; the original folder is left untouched as a recovery copy. Portfolio databases are not stored beside the executable.
 
 The application retrieves market quotes from the configured public data providers. The combined Excel export records source names and links for transparency.
 
@@ -114,7 +121,7 @@ The application retrieves market quotes from the configured public data provider
 
 Download `FinanceTerminal.exe` from the [latest GitHub Release](https://github.com/RottenZombie/finance-app/releases/latest) and run it on Windows x64.
 
-Version 2.2.9 is distributed as a standalone executable. User settings and portfolio data are stored separately in the current user’s application-data directory. When an update is installed, the updater replaces the executable without intentionally removing this data directory.
+The Windows x64 build is distributed as a standalone executable. User settings and portfolio data are stored separately in the current user’s application-data directory. When an update is installed, the updater replaces the executable without intentionally removing this data directory.
 
 ---
 
@@ -150,6 +157,15 @@ The GitHub Actions workflow builds a Windows x64 executable with PyInstaller and
 ---
 
 ## Version history
+
+### 2.3.0 (development)
+- Added two independent local profiles; profile names can be changed.
+- Migrates the existing 2.2.x data folder into Profile 1 by copying it, while keeping the original data folder as a recovery copy.
+- Added selectable currency cards and expanded the supported currency catalog, including CHF and CZK.
+- Added double-click editing of existing Currency and Metals holdings.
+- Improved Turkish thousands/decimal formatting in the Portfolio and Metals calculators.
+- Corrected Metals EUR conversion to use the current EUR/TRY quote rather than a fixed approximation.
+- Clarified Summary valuation basis: Currency/Metals use current market quotes; BIST is included at recorded acquisition cost and excluded from unrealized K/Z until live quotes exist.
 
 ### 2.2.9
 - Moved application settings into `%APPDATA%\\FinanceTerminal\\config.json` and added migration from the legacy executable-folder configuration file.

@@ -7,6 +7,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -128,6 +130,7 @@ class InvestmentPanel(QGroupBox):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.cellDoubleClicked.connect(self.edit_holding)
         self.table.verticalHeader().setVisible(False)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)
@@ -235,6 +238,58 @@ class InvestmentPanel(QGroupBox):
                 if column > 0:
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.table.setItem(row_index, column, item)
+
+    def edit_holding(self, row: int, _column: int = 0) -> None:
+        """Edit the selected holding snapshot instead of adding another purchase."""
+        first_cell = self.table.item(row, 0)
+        code = str(first_cell.data(Qt.UserRole) or "") if first_cell is not None else ""
+        if not code:
+            return
+        holding = self.store.get_holding(self.asset_group, code)
+        if holding is None:
+            QMessageBox.warning(self, "Kayıt bulunamadı", "Düzenlenecek kayıt artık mevcut değil.")
+            self.refresh_table()
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{holding['display_name']} kaydını düzenle")
+        dialog.setMinimumWidth(340)
+        form = QFormLayout(dialog)
+        quantity_edit = QLineEdit(format_quantity(Decimal(holding["quantity"])))
+        cost_edit = QLineEdit(format_localized(Decimal(holding["average_cost_try"])))
+        quantity_edit.setPlaceholderText("Örn. 10,5")
+        cost_edit.setPlaceholderText("Örn. 3.250,00")
+        form.addRow(f"Miktar ({holding['unit']})", quantity_edit)
+        form.addRow("Ortalama alış birim fiyatı (₺)", cost_edit)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        try:
+            quantity = parse_localized_decimal(quantity_edit.text(), field_name="Miktar")
+            average_cost = parse_localized_decimal(
+                cost_edit.text(), field_name="Ortalama alış fiyatı"
+            )
+            self.store.set_holding(
+                self.asset_group,
+                code,
+                quantity,
+                average_cost,
+                display_name=holding["display_name"],
+                unit=holding["unit"],
+            )
+            self.refresh_table()
+            self.portfolio_changed.emit()
+            QMessageBox.information(
+                self, "Kayıt güncellendi",
+                f"{holding['display_name']} miktarı ve ortalama maliyeti güncellendi.",
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Kayıt güncellenemedi", str(exc))
 
     def clear_form(self) -> None:
         self.quantity_input.clear()

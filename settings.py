@@ -11,6 +11,9 @@ DEFAULT = {
     "start_tab": 0,
     "close_to_tray": None,
     "auto_update_check": None,
+    "active_profile": "profile1",
+    "profile_names": {"profile1": "Profil 1", "profile2": "Profil 2"},  # Profile 3 is created on demand.
+    "currency_codes": ["USD", "EUR", "HUF"],
 }
 
 

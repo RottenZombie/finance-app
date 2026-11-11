@@ -23,6 +23,20 @@ class SummaryCalculationTests(unittest.TestCase):
         self.assertEqual(converted, {"TRY": "4.070,00", "EUR": "107,11", "USD": "116,29"})
 
 
+
+    def test_multiple_holdings_profit_uses_weighted_cost_basis(self):
+        totals = calculate_portfolio_totals(
+            currency_holdings=[
+                {"asset_code": "USD", "quantity": "10", "average_cost_try": "30"},
+                {"asset_code": "CHF", "quantity": "2", "average_cost_try": "40"},
+            ],
+            currency_prices={"USD": Decimal("35"), "CHF": Decimal("45")},
+            metal_holdings=[], metal_prices={}, bist_holdings=[],
+        )
+        self.assertEqual(totals["currency"], Decimal("440"))
+        self.assertEqual(totals["currency_profit_loss"], Decimal("60"))
+        self.assertEqual(totals["total_profit_loss"], Decimal("60"))
+
     def test_profit_loss_is_calculated_for_quoted_assets_only(self):
         totals = calculate_portfolio_totals(
             currency_holdings=[

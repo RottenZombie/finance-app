@@ -31,6 +31,36 @@ class BistCoreTests(unittest.TestCase):
             self.assertTrue(db.delete_holding("THYAO"))
             self.assertEqual(len(db.list_holdings()), 1)
 
+    def test_update_holding_edits_all_fields_and_can_rename_ticker(self):
+        with tempfile.TemporaryDirectory() as temp:
+            db = BistDatabase(Path(temp) / "test.db")
+            db.upsert_holding(
+                "ASELS", "100", "75,50", company="Aselsan", sector="Savunma", notes="Eski not"
+            )
+            updated = db.update_holding(
+                "ASELS", symbol="ASELS2", quantity="250", average_cost="82,75",
+                company="Yeni şirket adı", sector="Teknoloji", notes="Yeni not",
+            )
+            self.assertEqual(updated["symbol"], "ASELS2")
+            self.assertEqual(Decimal(updated["quantity"]), Decimal("250"))
+            self.assertEqual(Decimal(updated["average_cost"]), Decimal("82.75"))
+            self.assertEqual(updated["company"], "Yeni şirket adı")
+            self.assertEqual(updated["sector"], "Teknoloji")
+            self.assertEqual(updated["notes"], "Yeni not")
+            self.assertIsNone(db.get_holding("ASELS"))
+
+    def test_update_holding_does_not_overwrite_existing_ticker(self):
+        with tempfile.TemporaryDirectory() as temp:
+            db = BistDatabase(Path(temp) / "test.db")
+            db.upsert_holding("ASELS", "100", "75")
+            db.upsert_holding("THYAO", "20", "250")
+            with self.assertRaises(ValueError):
+                db.update_holding(
+                    "ASELS", symbol="THYAO", quantity="5", average_cost="10"
+                )
+            self.assertIsNotNone(db.get_holding("ASELS"))
+            self.assertEqual(db.get_holding("THYAO")["quantity"], "20")
+
     def test_delete_multiple_and_all_holdings(self):
         with tempfile.TemporaryDirectory() as temp:
             db = BistDatabase(Path(temp) / "test.db")

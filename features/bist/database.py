@@ -110,6 +110,67 @@ class BistDatabase:
             )
         return self.get_holding(ticker)  # type: ignore[return-value]
 
+    def update_holding(
+        self,
+        original_symbol: object,
+        *,
+        symbol: object,
+        quantity: object,
+        average_cost: object,
+        company: object = "",
+        sector: object = "",
+        notes: object = "",
+    ) -> dict[str, Any]:
+        """Update every editable field of an existing BIST holding.
+
+        The ticker may be renamed, but an existing ticker is never overwritten.
+        The original created_at timestamp is retained.
+        """
+        old_ticker = normalize_symbol(original_symbol)
+        new_ticker = normalize_symbol(symbol)
+        qty = parse_localized_decimal(quantity, field_name="Adet")
+        cost = parse_localized_decimal(average_cost, field_name="Ortalama maliyet")
+        if qty <= 0:
+            raise ValueError("Adet sıfırdan büyük olmalıdır.")
+        if cost < 0:
+            raise ValueError("Ortalama maliyet negatif olamaz.")
+
+        company_text = str(company or "").strip() or new_ticker
+        sector_text = str(sector or "").strip()
+        notes_text = str(notes or "").strip()
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+        with self._connection() as conn:
+            existing = conn.execute(
+                "SELECT symbol FROM bist_holdings WHERE symbol = ?", (old_ticker,)
+            ).fetchone()
+            if existing is None:
+                raise ValueError(f"Düzenlenecek kayıt bulunamadı: {old_ticker}")
+
+            if new_ticker != old_ticker:
+                collision = conn.execute(
+                    "SELECT symbol FROM bist_holdings WHERE symbol = ?", (new_ticker,)
+                ).fetchone()
+                if collision is not None:
+                    raise ValueError(
+                        f"{new_ticker} koduyla başka bir kayıt zaten mevcut. "
+                        "Mevcut kaydı ezmemek için değişiklik yapılmadı."
+                    )
+
+            conn.execute(
+                """
+                UPDATE bist_holdings
+                SET symbol = ?, company = ?, quantity = ?, average_cost = ?,
+                    sector = ?, notes = ?, updated_at = ?
+                WHERE symbol = ?
+                """,
+                (
+                    new_ticker, company_text, str(qty), str(cost),
+                    sector_text, notes_text, now, old_ticker,
+                ),
+            )
+        return self.get_holding(new_ticker)  # type: ignore[return-value]
+
     def get_holding(self, symbol: object) -> dict[str, Any] | None:
         ticker = normalize_symbol(symbol)
         with self._connection() as conn:

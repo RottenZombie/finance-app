@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QAbstractItemView,
     QFrame,
+    QDialog,
+    QDialogButtonBox,
 )
 
 from .database import BistDatabase
@@ -156,7 +158,7 @@ class BistPortfolioTab(QWidget):
         for column, width in enumerate((90, 240, 90, 120, 140, 145, 220, 125)):
             self.table.setColumnWidth(column, width)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.table.itemDoubleClicked.connect(self.load_selected_to_form)
+        self.table.itemDoubleClicked.connect(self.edit_holding)
         root.addWidget(self.table, 1)
 
         self.notice = QLabel(
@@ -257,8 +259,82 @@ class BistPortfolioTab(QWidget):
                     symbols.append(str(symbol))
         return list(dict.fromkeys(symbols))
 
+    def edit_holding(self, item=None, *_args) -> None:
+        """Edit a BIST row in a dedicated dialog, matching other portfolio tabs."""
+        symbol = item.data(Qt.UserRole) if item is not None else None
+        if not symbol:
+            symbols = self._selected_symbols()
+            if not symbols:
+                return
+            symbol = symbols[0]
+        holding = self.database.get_holding(symbol)
+        if not holding:
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{holding['symbol']} kaydını düzenle")
+        dialog.setMinimumWidth(390)
+        root = QVBoxLayout(dialog)
+        form = QFormLayout()
+
+        symbol_edit = QLineEdit(str(holding["symbol"]))
+        company_edit = QLineEdit(str(holding.get("company", "")))
+        quantity_edit = QLineEdit(str(holding["quantity"]).replace(".", ","))
+        cost_edit = QLineEdit(str(holding["average_cost"]).replace(".", ","))
+        sector_edit = QLineEdit(str(holding.get("sector", "")))
+        notes_edit = QLineEdit(str(holding.get("notes", "")))
+
+        symbol_edit.setPlaceholderText("Örn. ASELS")
+        company_edit.setPlaceholderText("Şirket adı")
+        quantity_edit.setPlaceholderText("Örn. 250")
+        cost_edit.setPlaceholderText("Örn. 74,50")
+        sector_edit.setPlaceholderText("Örn. Savunma")
+        notes_edit.setPlaceholderText("İsteğe bağlı not")
+
+        form.addRow("Hisse kodu *", symbol_edit)
+        form.addRow("Şirket", company_edit)
+        form.addRow("Adet *", quantity_edit)
+        form.addRow("Ortalama maliyet (TL) *", cost_edit)
+        form.addRow("Sektör", sector_edit)
+        form.addRow("Not", notes_edit)
+        root.addLayout(form)
+
+        hint = QLabel("Hisse kodu dâhil tüm giriş alanlarını bu pencereden değiştirebilirsiniz.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("font-size: 10px;")
+        root.addWidget(hint)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Save).setText("Değişiklikleri Kaydet")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        root.addWidget(buttons)
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        try:
+            updated = self.database.update_holding(
+                holding["symbol"],
+                symbol=symbol_edit.text(),
+                company=company_edit.text(),
+                quantity=quantity_edit.text(),
+                average_cost=cost_edit.text(),
+                sector=sector_edit.text(),
+                notes=notes_edit.text(),
+            )
+            self.refresh_table()
+            self.portfolio_changed.emit()
+            self.clear_form()
+            QMessageBox.information(
+                self, "BIST Portföy", f"{updated['symbol']} kaydı güncellendi."
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Kayıt güncellenemedi", str(exc))
+
+    # Retain an explicit helper for code paths that may want to load a row into
+    # the main form without opening the editor.
     def load_selected_to_form(self, item=None, *_args) -> None:
-        # When multiple rows are selected, load the row that was double-clicked.
         symbol = item.data(Qt.UserRole) if item is not None else None
         if not symbol:
             symbols = self._selected_symbols()

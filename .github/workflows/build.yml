@@ -1,4 +1,4 @@
-name: FinanceTerminal 2.2.9 - Windows EXE
+name: FinanceTerminal 2.3.0 - Windows EXE
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build FinanceTerminal 2.2.9 Windows x64
+    name: Build FinanceTerminal 2.3.0 Windows x64
     runs-on: windows-latest
 
     steps:
@@ -63,7 +63,7 @@ jobs:
         run: |
           @"
           Application: FinanceTerminal
-          Application version: 2.2.9-dev
+          Application version: 2.3.0-dev
           Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
           BIST AI: included
@@ -71,9 +71,12 @@ jobs:
           Combined portfolio import: included
           Portfolio currency holdings: included
           Metals holdings: included
+          Selectable currency cards: included
+          Editable Currency / Metals holdings: included
+          Dual independent profiles: included
           Multi-select deletion: included
           Delete all holdings: included
-          Summary profit and loss: included
+          Summary valuation and profit/loss checks: included
           BIST notes column: included
           Resizable table columns: included
           Last quote update timestamps: included
@@ -87,7 +90,7 @@ jobs:
       - name: Upload versioned EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FinanceTerminal-2.2.9-Windows-x64
+          name: FinanceTerminal-2.3.0-Windows-x64
           path: |
             dist/FinanceTerminal.exe
             dist/build-info.txt
