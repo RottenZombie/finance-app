@@ -359,18 +359,56 @@ Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction Silent
     with os.fdopen(script_fd, "w", encoding="utf-8-sig") as script_file:
         script_file.write(script)
 
-    creationflags = (
-        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        | getattr(subprocess, "DETACHED_PROCESS", 0)
-        | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    
+    # Create the log directory before starting PowerShell.
+    log_root = Path(os.environ.get("APPDATA") or tempfile.gettempdir())
+    log_directory = log_root / "FinanceTerminal" / "logs"
+    log_directory.mkdir(parents=True, exist_ok=True)
+    log_path = log_directory / "updater.log"
+
+    def write_launcher_log(message: str) -> None:
+        try:
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            with log_path.open("a", encoding="utf-8") as log_file:
+                log_file.write(f"[{timestamp}] {message}\n")
+        except OSError:
+            pass
+
+    system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    powershell_path = (
+        system_root
+        / "System32"
+        / "WindowsPowerShell"
+        / "v1.0"
+        / "powershell.exe"
     )
+
+    powershell_command = (
+        str(powershell_path)
+        if powershell_path.is_file()
+        else "powershell.exe"
+    )
+
+    command = [
+        powershell_command,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(script_path),
+    ]
+
+    # Use CREATE_NO_WINDOW without DETACHED_PROCESS.
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+    write_launcher_log(
+        "Python güncelleyici PowerShell yardımcısını başlatıyor."
+    )
+
     try:
-        subprocess.Popen(
-            [
-                "powershell.exe", "-NoProfile", "-NonInteractive",
-                "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
-                "-File", str(script_path),
-            ],
+        helper_process = subprocess.Popen(
+            command,
+            cwd=str(executable.parent),
             close_fds=True,
             creationflags=creationflags,
             stdin=subprocess.DEVNULL,
@@ -378,5 +416,26 @@ Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction Silent
             stderr=subprocess.DEVNULL,
         )
     except OSError as exc:
+        write_launcher_log(
+            f"PowerShell yardımcısı başlatılamadı: {exc}"
+        )
         script_path.unlink(missing_ok=True)
-        raise UpdateError(f"Güncelleme yardımcısı başlatılamadı: {exc}") from exc
+        raise UpdateError(
+            f"Güncelleme yardımcısı başlatılamadı: {exc}"
+        ) from exc
+
+    write_launcher_log(
+        f"PowerShell yardımcısı başlatıldı. PID: {helper_process.pid}"
+    )
+
+    time.sleep(0.75)
+    exit_code = helper_process.poll()
+
+    if exit_code is not None:
+        write_launcher_log(
+            f"PowerShell yardımcısı erken kapandı. Çıkış kodu: {exit_code}"
+        )
+        raise UpdateError(
+            "Güncelleme yardımcısı başlatıldı ancak hemen kapandı. "
+            f"Ayrıntılı günlük: {log_path}"
+        )

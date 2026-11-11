@@ -51,7 +51,7 @@ single_instance.activated.connect(w.show_from_second_instance)
 app._finance_terminal_single_instance = single_instance
 app.aboutToQuit.connect(single_instance.close)
 
-# FinanceTerminal 2.3.2: selectable currencies, independent profiles and editable holdings.
+# FinanceTerminal 2.3.3: selectable currencies, independent profiles and editable holdings.
 w.resize(1100, 760)
 w.show()
 
