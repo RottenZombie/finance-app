@@ -22,6 +22,7 @@ class UpdateCheckWorker(QThread):
 
 class UpdateDownloadWorker(QThread):
     completed = Signal(object)
+    progress = Signal(int, int, float)  # downloaded bytes, total bytes, average bytes/second
 
     def __init__(self, release, parent=None):
         super().__init__(parent)
@@ -29,7 +30,12 @@ class UpdateDownloadWorker(QThread):
 
     def run(self):
         try:
-            downloaded = download_release_asset(self.release)
+            downloaded = download_release_asset(
+                self.release,
+                progress_callback=lambda received, total, speed: self.progress.emit(
+                    received, total, speed
+                ),
+            )
             self.completed.emit({"path": str(downloaded), "error": None})
         except Exception as exc:
             self.completed.emit({"path": None, "error": str(exc)})

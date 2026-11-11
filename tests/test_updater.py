@@ -105,6 +105,48 @@ class UpdaterTests(unittest.TestCase):
         finally:
             downloaded.unlink(missing_ok=True)
 
+    def test_download_reports_byte_progress_and_speed(self):
+        content = b"MZ" + (b"P" * 2046)
+        info = parse_release_payload(self._payload(), "2.2.7")
+        info = info.__class__(
+            tag_name=info.tag_name,
+            version=info.version,
+            release_url=info.release_url,
+            download_url=info.download_url,
+            asset_size=len(content),
+            digest=hashlib.sha256(content).hexdigest(),
+            release_notes=info.release_notes,
+        )
+
+        class FakeResponse:
+            def __init__(self, data):
+                self.data = data
+                self.offset = 0
+            def __enter__(self): return self
+            def __exit__(self, *_args): return False
+            def read(self, size=-1):
+                if self.offset >= len(self.data): return b""
+                chunk = self.data[self.offset:self.offset + size]
+                self.offset += len(chunk)
+                return chunk
+
+        progress = []
+        with patch("core.updater.urlopen", return_value=FakeResponse(content)):
+            downloaded = download_release_asset(
+                info, progress_callback=lambda received, total, speed: progress.append(
+                    (received, total, speed)
+                )
+            )
+        try:
+            self.assertGreaterEqual(len(progress), 3)
+            self.assertEqual(progress[0][0], 0)
+            self.assertEqual(progress[-1][0], len(content))
+            self.assertEqual(progress[-1][1], len(content))
+            self.assertGreaterEqual(progress[-1][2], 0.0)
+            self.assertTrue(downloaded.is_file())
+        finally:
+            downloaded.unlink(missing_ok=True)
+
     def test_bad_digest_rejects_and_cleans_temporary_file(self):
         content = b"MZ" + (b"G" * 2046)
         info = parse_release_payload(self._payload(), "2.2.7")

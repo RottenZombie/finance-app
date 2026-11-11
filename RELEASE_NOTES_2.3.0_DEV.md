@@ -19,3 +19,11 @@
 - Profil sistemi üç profille sınırlandırıldı: Profil 1 ve Profil 2 varsayılan olarak bulunur; Profil 3 yalnızca Profil Ekle seçeneğiyle oluşturulur. Üçüncü profil sonrası ekleme denemesinde maksimum profil mesajı gösterilir.
 - Profil seçicisi isim uzunluğuna göre otomatik genişler; en fazla 20 karakter gösterir ve uzun adları üç nokta ile kısaltır. Profilin tam adı ayarlarda ve Excel sayfalarında korunur.
 - Profil 3 için ayrı veri deposu ve profile özgü Excel dosya adı desteği eklendi.
+
+## Güncelleme sistemi iyileştirmeleri
+- İndirme penceresi indirilen/toplam MB, yüzde ve ortalama MB/sn hızını gerçek zamanlı gösterir.
+- İndirme worker'ı parça parça ilerleme sinyali gönderir; indirme boyutu ve varsa GitHub SHA-256 özeti doğrulanır.
+- Güncelleme yardımcısı PyInstaller `--onefile` yapısındaki Python sürecini ve bootloader ana sürecini birlikte bekler.
+- Yeni EXE hedef klasörde geçici dosyaya kopyalanıp boyut ve Windows EXE imzası bakımından kontrol edildikten sonra yerleştirilir.
+- Önceki EXE yedeklenir; yeni sürüm başlatılamazsa eski EXE geri yüklenmeye çalışılır.
+- Güncelleme yardımcısı günlükleri `%APPDATA%\FinanceTerminal\logs\updater.log` dosyasına yazar.

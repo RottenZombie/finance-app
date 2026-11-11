@@ -7,8 +7,10 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -21,7 +23,8 @@ LATEST_RELEASE_API = (
 )
 EXPECTED_ASSET_NAME = "FinanceTerminal.exe"
 MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024
-USER_AGENT = "FinanceTerminal-Updater/1.0"
+USER_AGENT = "FinanceTerminal-Updater/1.1"
+DOWNLOAD_CHUNK_SIZE = 512 * 1024
 
 
 class UpdateError(RuntimeError):
@@ -149,8 +152,12 @@ def check_latest_release(current_version: str, timeout: int = 12) -> ReleaseInfo
     return parse_release_payload(payload, current_version)
 
 
-def download_release_asset(info: ReleaseInfo, timeout: int = 30) -> Path:
-    """Download the release EXE to a temporary file and validate it before use."""
+def download_release_asset(
+    info: ReleaseInfo,
+    timeout: int = 30,
+    progress_callback: Callable[[int, int, float], None] | None = None,
+) -> Path:
+    """Download and verify the release EXE; optionally report bytes and average speed."""
     request = Request(
         info.download_url,
         headers={"User-Agent": USER_AGENT, "Accept": "application/octet-stream"},
@@ -159,11 +166,14 @@ def download_release_asset(info: ReleaseInfo, timeout: int = 30) -> Path:
     fd, temp_name = tempfile.mkstemp(prefix=f"FinanceTerminal_{info.version}_", suffix=".exe")
     temp_path = Path(temp_name)
     total = 0
+    started_at = time.monotonic()
     try:
+        if progress_callback is not None:
+            progress_callback(0, info.asset_size, 0.0)
         with os.fdopen(fd, "wb") as output:
             with urlopen(request, timeout=timeout) as response:
                 while True:
-                    chunk = response.read(1024 * 1024)
+                    chunk = response.read(DOWNLOAD_CHUNK_SIZE)
                     if not chunk:
                         break
                     total += len(chunk)
@@ -171,6 +181,12 @@ def download_release_asset(info: ReleaseInfo, timeout: int = 30) -> Path:
                         raise UpdateError("İndirilen dosya beklenen boyutu aşıyor.")
                     digest.update(chunk)
                     output.write(chunk)
+                    if progress_callback is not None:
+                        elapsed = max(time.monotonic() - started_at, 0.001)
+                        progress_callback(total, info.asset_size, total / elapsed)
+            output.flush()
+            os.fsync(output.fileno())
+
         if total != info.asset_size:
             raise UpdateError(
                 f"İndirilen dosyanın boyutu uyuşmuyor (beklenen {info.asset_size}, gelen {total})."
@@ -180,6 +196,9 @@ def download_release_asset(info: ReleaseInfo, timeout: int = 30) -> Path:
                 raise UpdateError("İndirilen dosya geçerli bir Windows EXE dosyası değil.")
         if info.digest and digest.hexdigest().lower() != info.digest.lower():
             raise UpdateError("İndirilen dosyanın SHA-256 doğrulaması başarısız.")
+        if progress_callback is not None:
+            elapsed = max(time.monotonic() - started_at, 0.001)
+            progress_callback(total, info.asset_size, total / elapsed)
         return temp_path
     except Exception:
         try:
@@ -211,8 +230,16 @@ def ensure_install_directory_writable(executable: Path) -> None:
         ) from exc
 
 
-def launch_windows_update_helper(downloaded_exe: Path, executable: Path) -> None:
-    """Start a detached PowerShell helper which waits for this app to exit, replaces it and restarts it."""
+def launch_windows_update_helper(
+    downloaded_exe: Path,
+    executable: Path,
+    expected_size: int | None = None,
+) -> None:
+    """Launch a detached helper that waits for both PyInstaller one-file processes.
+
+    PyInstaller one-file builds use a bootloader parent and a Python child process.
+    Waiting for only os.getpid() can leave the parent holding the EXE open.
+    """
     if os.name != "nt":
         raise UpdateError("Otomatik EXE değiştirme yalnızca Windows'ta kullanılabilir.")
     ensure_install_directory_writable(executable)
@@ -220,36 +247,123 @@ def launch_windows_update_helper(downloaded_exe: Path, executable: Path) -> None
     def ps_quote(value: str) -> str:
         return "'" + value.replace("'", "''") + "'"
 
+    size_literal = int(expected_size or downloaded_exe.stat().st_size)
+    target_pid = os.getpid()
+    parent_pid = os.getppid()
+    pids = sorted({pid for pid in (target_pid, parent_pid) if isinstance(pid, int) and pid > 0})
+    pid_array = ", ".join(str(pid) for pid in pids)
+
     script = f"""$ErrorActionPreference = 'Stop'
-$targetPid = {os.getpid()}
+$targetProcessIds = @({pid_array})
 $source = {ps_quote(str(downloaded_exe.resolve()))}
 $destination = {ps_quote(str(executable.resolve()))}
+$expectedSize = {size_literal}
+$installDirectory = Split-Path -Parent $destination
 $staged = $destination + '.new'
-try {{
-    while (Get-Process -Id $targetPid -ErrorAction SilentlyContinue) {{ Start-Sleep -Milliseconds 500 }}
-    Copy-Item -LiteralPath $source -Destination $staged -Force
-    Move-Item -LiteralPath $staged -Destination $destination -Force
-    Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue
-    Start-Process -FilePath $destination
-}} catch {{
-    Add-Type -AssemblyName PresentationFramework -ErrorAction SilentlyContinue
-    [System.Windows.MessageBox]::Show(
-        ('FinanceTerminal güncellenemedi. Eski sürüm korunmuştur.`n`n' + $_.Exception.Message),
-        'FinanceTerminal güncelleme hatası'
-    ) | Out-Null
-    if (Test-Path -LiteralPath $staged) {{ Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue }}
+$backup = $destination + '.previous-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss-fff')
+$logDirectory = Join-Path $env:APPDATA 'FinanceTerminal\\logs'
+if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {{ $logDirectory = Join-Path $env:TEMP 'FinanceTerminal\\logs' }}
+New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+$logPath = Join-Path $logDirectory 'updater.log'
+function Write-UpdateLog([string]$message) {{
+    $line = ('[' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '] ' + $message)
+    Add-Content -LiteralPath $logPath -Value $line -Encoding UTF8
 }}
-Start-Sleep -Seconds 2
+$backupCreated = $false
+$updateSucceeded = $false
+try {{
+    Write-UpdateLog ('Güncelleme yardımcısı başladı. Hedef: ' + $destination)
+    if (!(Test-Path -LiteralPath $source -PathType Leaf)) {{ throw 'İndirilen geçici EXE bulunamadı.' }}
+    $sourceInfo = Get-Item -LiteralPath $source
+    if ($sourceInfo.Length -ne $expectedSize) {{ throw ('İndirilen EXE boyutu uyuşmuyor. Beklenen: ' + $expectedSize + ', bulunan: ' + $sourceInfo.Length) }}
+
+    if (Test-Path -LiteralPath $staged) {{ Remove-Item -LiteralPath $staged -Force }}
+    Copy-Item -LiteralPath $source -Destination $staged -Force
+    $stagedInfo = Get-Item -LiteralPath $staged
+    if ($stagedInfo.Length -ne $expectedSize) {{ throw 'Kurulum klasörüne kopyalanan EXE boyut doğrulamasından geçemedi.' }}
+    $fileStream = [System.IO.File]::OpenRead($staged)
+    try {{
+        $header = New-Object byte[] 2
+        if ($fileStream.Read($header, 0, 2) -ne 2 -or $header[0] -ne 77 -or $header[1] -ne 90) {{ throw 'Yeni dosya geçerli bir Windows EXE değil (MZ imzası yok).' }}
+    }} finally {{ $fileStream.Dispose() }}
+    Write-UpdateLog 'Yeni EXE geçici kurulum dosyasına kopyalandı ve doğrulandı.'
+
+    # Wait for both the Python child and PyInstaller one-file bootloader parent.
+    $deadline = (Get-Date).AddSeconds(90)
+    foreach ($appProcessId in $targetProcessIds) {{
+        while (Get-Process -Id $appProcessId -ErrorAction SilentlyContinue) {{
+            if ((Get-Date) -gt $deadline) {{ throw ('Uygulama işlemi kapanmadı (PID ' + $appProcessId + ').') }}
+            Start-Sleep -Milliseconds 400
+        }}
+    }}
+    # Give the Windows loader and PyInstaller bootloader time to release the image file.
+    Start-Sleep -Seconds 2
+    Write-UpdateLog 'Uygulamanın iki süreci de kapandı; EXE değiştiriliyor.'
+
+    $replaceDeadline = (Get-Date).AddSeconds(60)
+    $lastReplaceError = ''
+    while ((Get-Date) -lt $replaceDeadline) {{
+        try {{
+            [System.IO.File]::Replace($staged, $destination, $backup, $true)
+            $backupCreated = $true
+            break
+        }} catch {{
+            $lastReplaceError = $_.Exception.Message
+            Start-Sleep -Milliseconds 750
+        }}
+    }}
+    if (!$backupCreated) {{ throw ('Eski EXE değiştirilemedi. Son hata: ' + $lastReplaceError) }}
+    Write-UpdateLog 'Yeni EXE hedef konuma atomik olarak yerleştirildi; eski dosya yedeklendi.'
+
+    Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue
+    $newProcess = Start-Process -FilePath $destination -WorkingDirectory $installDirectory -PassThru
+    Start-Sleep -Seconds 10
+    $newProcess.Refresh()
+    if ($newProcess.HasExited) {{
+        throw ('Yeni sürüm başlatıldıktan hemen sonra kapandı. Çıkış kodu: ' + $newProcess.ExitCode)
+    }}
+    Write-UpdateLog 'Yeni FinanceTerminal süreci çalışır durumda; güncelleme başarılı.'
+    $updateSucceeded = $true
+    Start-Sleep -Seconds 2
+    Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+}} catch {{
+    $errorMessage = $_.Exception.Message
+    Write-UpdateLog ('GÜNCELLEME HATASI: ' + $errorMessage)
+    if ($backupCreated -and (Test-Path -LiteralPath $backup)) {{
+        try {{
+            if (Test-Path -LiteralPath $destination) {{ Remove-Item -LiteralPath $destination -Force }}
+            [System.IO.File]::Move($backup, $destination)
+            Write-UpdateLog 'Geri alma başarılı; önceki EXE geri yüklendi.'
+            Start-Process -FilePath $destination -WorkingDirectory $installDirectory
+        }} catch {{
+            Write-UpdateLog ('GERİ ALMA HATASI: ' + $_.Exception.Message)
+        }}
+    }}
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+    [System.Windows.Forms.MessageBox]::Show(
+        ('FinanceTerminal güncellenemedi. Önceki sürüm korunmaya/geri yüklenmeye çalışıldı.' + [Environment]::NewLine + [Environment]::NewLine + $errorMessage + [Environment]::NewLine + [Environment]::NewLine + 'Ayrıntılı günlük: ' + $logPath),
+        'FinanceTerminal güncelleme hatası',
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    ) | Out-Null
+}} finally {{
+    if (Test-Path -LiteralPath $staged) {{ Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue }}
+    if ($updateSucceeded) {{ Write-UpdateLog 'Güncelleme yardımcısı tamamlandı.' }}
+}}
+Start-Sleep -Seconds 1
 Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
 """
+
     script_fd, script_name = tempfile.mkstemp(prefix="FinanceTerminal_Update_", suffix=".ps1")
     script_path = Path(script_name)
     with os.fdopen(script_fd, "w", encoding="utf-8-sig") as script_file:
         script_file.write(script)
 
-    creationflags = 0
-    creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+    creationflags = (
+        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        | getattr(subprocess, "DETACHED_PROCESS", 0)
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    )
     try:
         subprocess.Popen(
             [

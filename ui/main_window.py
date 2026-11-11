@@ -47,7 +47,7 @@ class MainWindow(QWidget):
         self.setWindowTitle("FinanceTerminal")
 
         # ---------------- SETTINGS ----------------
-        self.VERSION = "2.3.0-dev"
+        self.VERSION = "2.3.1-dev"
         self.settings = load()
         self._initialize_profile_settings()
         self.worker: Worker | None = None
@@ -706,19 +706,47 @@ class MainWindow(QWidget):
         self._pending_update_automatic = automatic
         self._update_download_payload = None
         self._update_progress = QProgressDialog(self)
-        self._update_progress.setLabelText(f"FinanceTerminal {release.version} indiriliyor...")
-        self._update_progress.setRange(0, 0)
-        self._update_progress.setWindowTitle("Güncelleme indiriliyor")
+        self._update_progress.setWindowTitle("FinanceTerminal güncellemesi indiriliyor")
+        self._update_progress.setLabelText(
+            f"FinanceTerminal {release.version} indiriliyor...\n"
+            f"0.0 MB / {release.asset_size / 1_000_000:.1f} MB  ·  %0.0\n"
+            "Ortalama indirme hızı hesaplanıyor..."
+        )
+        self._update_progress.setRange(0, max(1, int(release.asset_size)))
+        self._update_progress.setValue(0)
         self._update_progress.setCancelButton(None)
         self._update_progress.setMinimumDuration(0)
         self._update_progress.setAutoClose(False)
+        self._update_progress.setAutoReset(False)
+        self._update_progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self._update_progress.setMinimumWidth(470)
+        self._update_progress.resize(490, self._update_progress.sizeHint().height())
         self._update_progress.show()
 
         worker = UpdateDownloadWorker(release, self)
         self._update_download_worker = worker
+        worker.progress.connect(self._on_update_download_progress)
         worker.completed.connect(self._store_update_download_result)
         worker.finished.connect(self._finish_update_download)
         worker.start()
+
+    def _on_update_download_progress(self, received: int, total: int, speed_bps: float) -> None:
+        """Show real byte progress and average download speed."""
+        if self._update_progress is None:
+            return
+        total = max(1, int(total))
+        received = max(0, min(int(received), total))
+        percent = received * 100.0 / total
+        received_mb = received / 1_000_000
+        total_mb = total / 1_000_000
+        speed_mbps = max(0.0, float(speed_bps)) / 1_000_000
+        self._update_progress.setRange(0, total)
+        self._update_progress.setValue(received)
+        self._update_progress.setLabelText(
+            f"FinanceTerminal {self._pending_update_release.version} indiriliyor...\n"
+            f"{received_mb:.2f} MB / {total_mb:.2f} MB  ·  %{percent:.1f}\n"
+            f"Ortalama indirme hızı: {speed_mbps:.2f} MB/sn"
+        )
 
     def _store_update_download_result(self, payload) -> None:
         self._update_download_payload = payload
@@ -742,7 +770,11 @@ class MainWindow(QWidget):
         downloaded = Path(payload["path"])
         try:
             executable = current_executable_path()
-            launch_windows_update_helper(downloaded, executable)
+            launch_windows_update_helper(
+                downloaded,
+                executable,
+                expected_size=self._pending_update_release.asset_size,
+            )
         except Exception as exc:
             try:
                 downloaded.unlink(missing_ok=True)
@@ -753,8 +785,9 @@ class MainWindow(QWidget):
 
         QMessageBox.information(
             self, "Güncelleme hazır",
-            f"FinanceTerminal {self._pending_update_release.version} indirildi. "
-            "Uygulama şimdi kapanacak, dosya güncellenecek ve yeniden açılacak."
+            f"FinanceTerminal {self._pending_update_release.version} indirildi ve doğrulandı. "
+            "Uygulama şimdi kapanacak. Güncelleyici eski EXE'yi yedekleyip yenisini kuracak; "
+            "yeni sürüm açılmazsa eski sürüm otomatik geri yüklenecek."
         )
         self._force_exit = True
         self.close()

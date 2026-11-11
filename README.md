@@ -6,11 +6,11 @@
 [![Logo](assets/finance_terminal.png)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 
 
-# FinanceTerminal 2.3.0
+# FinanceTerminal 2.3.1
 
 A lightweight Windows desktop application for currency conversion and personal portfolio tracking. Built with Python and PySide6, with local SQLite storage for investment records.
 
-**Development target:** `2.3.0`  
+**Development target:** `2.3.1`  
 **Platform:** Windows x64  
 **Download:** [![Toplam İndirme](https://img.shields.io/github/downloads/RottenZombie/finance-app/total?color=blue&label=Downloads)](https://github.com/RottenZombie/finance-app/releases/latest)
 
@@ -56,7 +56,7 @@ A lightweight Windows desktop application for currency conversion and personal p
 - Excel import/export.
 - Resizable table columns.
 
-> **Current limitation:** BIST AI is currently a local portfolio-management foundation. Live BIST prices, market-value and unrealized-return calculations, KAP scanning, and AI recommendations are not included in version 2.3.0. No broker login or automatic order placement is provided.
+> **Current limitation:** BIST AI is currently a local portfolio-management foundation. Live BIST prices, market-value and unrealized-return calculations, KAP scanning, and AI recommendations are not included in version 2.3.1. No broker login or automatic order placement is provided.
 
 ---
 
@@ -92,10 +92,12 @@ Metal valuation uses the application's spot-price feed converted to TRY per gram
 - Tables allow users to resize columns.
 - Close-to-system-tray behavior can be selected and remembered from Settings. The tray menu can restore the main window or exit the application.
 - When minimized to the tray, the application retains the latest displayed values. It does not perform background price refreshes; refresh remains manual.
-- Two independent profiles can be selected from the top bar; each has separate Currency, Metals, and BIST records, and each profile name can be changed.
+- Up to three independent profiles can be used. Profile 1 and Profile 2 are available initially; Profile 3 is created from the Profile Add option. Each profile has separate Currency, Metals, and BIST records, and each profile name can be changed.
 - Single-instance protection prevents multiple copies from opening. Starting the executable again restores/activates the existing application.
 - Automatic update checks can be enabled or disabled from Settings. The application can check GitHub Releases at startup and also supports a manual update check.
-- When a newer release is found, the user is asked before it is downloaded and installed. The updater replaces the application executable; portfolio databases and settings are kept in the user's application-data directory.
+- When a newer release is found, the user is asked before it is downloaded and installed. The download window shows the downloaded/total MB, percentage, and average speed in MB/s.
+- The Windows updater waits for both processes used by a PyInstaller one-file application, stages and verifies the new EXE beside the current one, keeps the previous EXE temporarily, and attempts an automatic rollback if the new version does not stay open.
+- Update-helper activity and errors are written to `%APPDATA%\FinanceTerminal\logs\updater.log`. Portfolio databases and settings remain in the user's application-data directory.
 - The system-tray notification identifies the application as FinanceTerminal.
 
 ---
@@ -120,6 +122,8 @@ The application retrieves market quotes from the configured public data provider
 ## Installation
 
 Download `FinanceTerminal.exe` from the [latest GitHub Release](https://github.com/RottenZombie/finance-app/releases/latest) and run it on Windows x64.
+
+> **Windows SmartScreen note:** Current standalone builds are not digitally signed. Windows may therefore display an “Unknown publisher” / “Windows protected your PC” warning when the EXE is downloaded. Only proceed when the file was obtained from this project's official GitHub Releases page and you trust the source. A verified publisher name and improved SmartScreen reputation require a trusted code-signing identity; changing the updater alone cannot remove this warning.
 
 The Windows x64 build is distributed as a standalone executable. User settings and portfolio data are stored separately in the current user’s application-data directory. When an update is installed, the updater replaces the executable without intentionally removing this data directory.
 
@@ -158,8 +162,13 @@ The GitHub Actions workflow builds a Windows x64 executable with PyInstaller and
 
 ## Version history
 
-### 2.3.0 (development)
-- Added two independent local profiles; profile names can be changed.
+### 2.3.1 (development)
+- Fixed the automatic updater for PyInstaller one-file Windows builds by waiting for both bootloader and application processes to close before replacing the EXE.
+- Added live update download progress with downloaded/total MB, percentage, and average MB/s speed.
+- Added staged EXE validation, temporary backup, rollback attempt when the new version does not remain open, and an updater log under `%APPDATA%\FinanceTerminal\logs\updater.log`.
+
+### 2.3.0
+- Added up to three independent local profiles; Profile 1 and Profile 2 are available initially, and Profile 3 is created on demand. Profile names can be changed.
 - Migrates the existing 2.2.x data folder into Profile 1 by copying it, while keeping the original data folder as a recovery copy.
 - Added selectable currency cards and expanded the supported currency catalog, including CHF and CZK.
 - Added double-click editing of existing Currency and Metals holdings.
