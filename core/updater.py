@@ -315,8 +315,15 @@ try {{
     if (!$backupCreated) {{ throw ('Eski EXE değiştirilemedi. Son hata: ' + $lastReplaceError) }}
     Write-UpdateLog 'Yeni EXE hedef konuma atomik olarak yerleştirildi; eski dosya yedeklendi.'
 
+    
     Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue
+
+    # Start the new executable as an independent PyInstaller instance.
+    $env:PYINSTALLER_RESET_ENVIRONMENT = '1'
+    Write-UpdateLog 'Yeni EXE bağımsız PyInstaller örneği olarak başlatılıyor.'
+
     $newProcess = Start-Process -FilePath $destination -WorkingDirectory $installDirectory -PassThru
+
     Start-Sleep -Seconds 10
     $newProcess.Refresh()
     if ($newProcess.HasExited) {{

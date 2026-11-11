@@ -47,7 +47,7 @@ class MainWindow(QWidget):
         self.setWindowTitle("FinanceTerminal")
 
         # ---------------- SETTINGS ----------------
-        self.VERSION = "2.3.4"
+        self.VERSION = "2.3.5"
         self.settings = load()
         self._initialize_profile_settings()
         self.worker: Worker | None = None
@@ -660,16 +660,26 @@ class MainWindow(QWidget):
         automatic = self._update_check_automatic
         error = payload.get("error")
         if error:
-            QMessageBox.warning(self, "Güncelleme kontrolü", str(error))
+            # Keep automatic startup checks silent.
+            # Manual checks still display connection or server errors.
+            if not automatic:
+                QMessageBox.warning(
+                    self, "Güncelleme kontrolü", str(error)
+                )
             return
 
         release = payload.get("release")
         if release is None:
-            QMessageBox.information(
-                self, "FinanceTerminal",
-                f"Güncelleme bulunamadı. {self.VERSION} sürümünü kullanıyorsunuz."
-            )
+            # No dialog when the application is already up to date.
+            # Manual checks still show the current version.
+            if not automatic:
+                QMessageBox.information(
+                    self,
+                    "FinanceTerminal",
+                    f"Şu an güncelsiniz, {self.VERSION} sürümünü kullanıyorsunuz."
+                )
             return
+
 
         if not getattr(sys, "frozen", False):
             QMessageBox.information(

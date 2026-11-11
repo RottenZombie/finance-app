@@ -1,4 +1,4 @@
-name: FinanceTerminal 2.3.4 - Windows EXE
+name: FinanceTerminal 2.3.5 - Windows EXE
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build FinanceTerminal 2.3.4 Windows x64
+    name: Build FinanceTerminal 2.3.5 Windows x64
     runs-on: windows-latest
 
     steps:
@@ -63,7 +63,7 @@ jobs:
         run: |
           @"
           Application: FinanceTerminal
-          Application version: 2.3.4
+          Application version: 2.3.5
           Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
           BIST AI: included
@@ -96,7 +96,7 @@ jobs:
       - name: Upload versioned EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FinanceTerminal-2.3.4-Windows-x64
+          name: FinanceTerminal-2.3.5-Windows-x64
           path: |
             dist/FinanceTerminal.exe
             dist/build-info.txt
