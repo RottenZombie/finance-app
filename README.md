@@ -1,18 +1,17 @@
-[![Toplam İndirme](https://img.shields.io/github/downloads/RottenZombie/finance-app/total?color=blue&label=Downloads)](https://github.com/RottenZombie/finance-app/releases/latest)
+[![Total Downloads](https://img.shields.io/github/downloads/RottenZombie/finance-app/total?color=blue&label=Downloads)](https://github.com/RottenZombie/finance-app/releases/latest)
 [![Open Issues](https://img.shields.io/github/issues/RottenZombie/finance-app)](https://github.com/RottenZombie/finance-app/issues)
 [![Windows](https://img.shields.io/badge/Platform-Windows%20-0078D4?logo=windows&logoColor=white&style=flat-square)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 [![Language](https://img.shields.io/badge/Language-Python%203.11+-3776AB?logo=python&logoColor=white&style=flat-square)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 
 [![Logo](assets/finance_terminal.png)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 
-
-# FinanceTerminal 2.3.1
+# FinanceTerminal 2.3.3
 
 A lightweight Windows desktop application for currency conversion and personal portfolio tracking. Built with Python and PySide6, with local SQLite storage for investment records.
 
-**Development target:** `2.3.1`  
+**Current version:** `2.3.3`  
 **Platform:** Windows x64  
-**Download:** [![Toplam İndirme](https://img.shields.io/github/downloads/RottenZombie/finance-app/total?color=blue&label=Downloads)](https://github.com/RottenZombie/finance-app/releases/latest)
+**Download:** [Latest GitHub Release](https://github.com/RottenZombie/finance-app/releases/latest)
 
 ---
 
@@ -56,7 +55,7 @@ A lightweight Windows desktop application for currency conversion and personal p
 - Excel import/export.
 - Resizable table columns.
 
-> **Current limitation:** BIST AI is currently a local portfolio-management foundation. Live BIST prices, market-value and unrealized-return calculations, KAP scanning, and AI recommendations are not included in version 2.3.1. No broker login or automatic order placement is provided.
+> **Current limitation:** BIST AI is currently a local portfolio-management foundation. Live BIST prices, market-value and unrealized-return calculations, KAP scanning, and AI recommendations are not included in version 2.3.3. No broker login or automatic order placement is provided.
 
 ---
 
@@ -97,7 +96,10 @@ Metal valuation uses the application's spot-price feed converted to TRY per gram
 - Automatic update checks can be enabled or disabled from Settings. The application can check GitHub Releases at startup and also supports a manual update check.
 - When a newer release is found, the user is asked before it is downloaded and installed. The download window shows the downloaded/total MB, percentage, and average speed in MB/s.
 - The Windows updater waits for both processes used by a PyInstaller one-file application, stages and verifies the new EXE beside the current one, keeps the previous EXE temporarily, and attempts an automatic rollback if the new version does not stay open.
-- Update-helper activity and errors are written to `%APPDATA%\FinanceTerminal\logs\updater.log`. Portfolio databases and settings remain in the user's application-data directory.
+- The updater uses an explicit Windows PowerShell executable path and a hidden-process launch configuration to improve update-helper startup reliability.
+- Launcher activity, startup failures, and update-helper errors are written to `%APPDATA%\FinanceTerminal\logs\updater.log`.
+- The updater checks for early PowerShell process termination and records the process ID to simplify troubleshooting.
+- Portfolio databases and settings remain in the user's application-data directory.
 - The system-tray notification identifies the application as FinanceTerminal.
 
 ---
@@ -108,10 +110,10 @@ Portfolio data is stored locally in SQLite under the current user's application-
 
 Typical Windows locations:
 
-- Settings: `%APPDATA%\\FinanceTerminal\\config.json`
-- Profile 1 BIST: `%APPDATA%\\FinanceTerminal\\profiles\\profile1\\data\\bist_portfolio.db`
-- Profile 1 Currency / Metals: `%APPDATA%\\FinanceTerminal\\profiles\\profile1\\data\\investment_holdings.db`
-- Profile 2 databases use the same paths under `profiles\\profile2\\data`.
+- Settings: `%APPDATA%\FinanceTerminal\config.json`
+- Profile 1 BIST: `%APPDATA%\FinanceTerminal\profiles\profile1\data\bist_portfolio.db`
+- Profile 1 Currency / Metals: `%APPDATA%\FinanceTerminal\profiles\profile1\data\investment_holdings.db`
+- Profile 2 databases use the same paths under `profiles\profile2\data`.
 
 If an older installation has its `config.json` next to the executable, the application migrates that configuration into the application-data directory on startup. On first launch of version 2.3.0, the existing 2.2.x `data` folder is copied into Profile 1; the original folder is left untouched as a recovery copy. Portfolio databases are not stored beside the executable.
 
@@ -162,7 +164,18 @@ The GitHub Actions workflow builds a Windows x64 executable with PyInstaller and
 
 ## Version history
 
-### 2.3.1 (development)
+### 2.3.3
+- Improved Windows automatic updater startup reliability.
+- Changed the PowerShell helper launch configuration and uses an explicit Windows PowerShell executable path.
+- Added Python-side updater launcher logging before the helper starts.
+- Added logging of the helper process ID and early startup failures.
+- Improved troubleshooting for cases where the update helper cannot start.
+- Preserved staged EXE validation, temporary backup, rollback attempt, and automatic application restart.
+
+### 2.3.2
+- Updated application and Windows build version information to match the 2.3.2 release.
+
+### 2.3.1
 - Fixed the automatic updater for PyInstaller one-file Windows builds by waiting for both bootloader and application processes to close before replacing the EXE.
 - Added live update download progress with downloaded/total MB, percentage, and average MB/s speed.
 - Added staged EXE validation, temporary backup, rollback attempt when the new version does not remain open, and an updater log under `%APPDATA%\FinanceTerminal\logs\updater.log`.
@@ -177,7 +190,7 @@ The GitHub Actions workflow builds a Windows x64 executable with PyInstaller and
 - Clarified Summary valuation basis: Currency/Metals use current market quotes; BIST is included at recorded acquisition cost and excluded from unrealized K/Z until live quotes exist.
 
 ### 2.2.9
-- Moved application settings into `%APPDATA%\\FinanceTerminal\\config.json` and added migration from the legacy executable-folder configuration file.
+- Moved application settings into `%APPDATA%\FinanceTerminal\config.json` and added migration from the legacy executable-folder configuration file.
 - Added Windows single-instance protection. Launching the executable again activates the already-running application instead of opening another copy.
 - Added configurable automatic update checks at startup and a manual update-check action in Settings.
 - Added user confirmation before downloading and installing a newer GitHub Release.
