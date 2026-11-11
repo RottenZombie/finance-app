@@ -5,11 +5,11 @@
 
 [![Logo](assets/finance_terminal.png)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 
-# FinanceTerminal 2.3.3
+# FinanceTerminal 2.3.4
 
 A lightweight Windows desktop application for currency conversion and personal portfolio tracking. Built with Python and PySide6, with local SQLite storage for investment records.
 
-**Current version:** `2.3.3`  
+**Current version:** `2.3.4`  
 **Platform:** Windows x64  
 **Download:** [Latest GitHub Release](https://github.com/RottenZombie/finance-app/releases/latest)
 
@@ -55,7 +55,7 @@ A lightweight Windows desktop application for currency conversion and personal p
 - Excel import/export.
 - Resizable table columns.
 
-> **Current limitation:** BIST AI is currently a local portfolio-management foundation. Live BIST prices, market-value and unrealized-return calculations, KAP scanning, and AI recommendations are not included in version 2.3.3. No broker login or automatic order placement is provided.
+> **Current limitation:** BIST AI is currently a local portfolio-management foundation. Live BIST prices, market-value and unrealized-return calculations, KAP scanning, and AI recommendations are not included in version 2.3.4. No broker login or automatic order placement is provided.
 
 ---
 
@@ -163,6 +163,9 @@ The GitHub Actions workflow builds a Windows x64 executable with PyInstaller and
 ---
 
 ## Version history
+
+### 2.3.4
+- Improved Windows automatic updater startup reliability.
 
 ### 2.3.3
 - Improved Windows automatic updater startup reliability.
