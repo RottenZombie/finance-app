@@ -241,4 +241,25 @@ The GitHub Actions workflow builds a Windows x64 executable with PyInstaller and
 
 ## License
 
-See the `LICENSE` file in this repository for the applicable license and terms.
+## Copyright and Usage
+
+**Copyright (c) 2026 FinanceTerminal. All Rights Reserved.**
+
+FinanceTerminal is a proprietary project. No open-source license is granted for this repository.
+
+The source code, application binaries, icons, documentation, and other original project materials are protected by applicable copyright laws.
+
+Without prior written permission from the respective rights holder, you may not:
+
+- Reproduce or redistribute the project materials.
+- Modify, publish, or distribute derivative works.
+- Incorporate the source code or project assets into other applications.
+- Sell, sublicense, or commercially redistribute the project materials.
+
+Making this repository publicly available on GitHub does not place the project in the public domain or grant general permission to reuse its contents.
+
+GitHub users may view and fork this public repository in accordance with GitHub's Terms of Service. This does not constitute a general license to reuse or redistribute the project materials outside the permissions provided by GitHub.
+
+Third-party libraries, dependencies, and materials remain subject to their respective licenses and copyright notices.
+
+All rights not expressly granted are reserved by their respective rights holders.
