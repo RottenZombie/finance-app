@@ -47,7 +47,7 @@ class MainWindow(QWidget):
         self.setWindowTitle("FinanceTerminal")
 
         # ---------------- SETTINGS ----------------
-        self.VERSION = "2.3.5"
+        self.VERSION = "2.3.6"
         self.settings = load()
         self._initialize_profile_settings()
         self.worker: Worker | None = None
