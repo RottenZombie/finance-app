@@ -5,13 +5,14 @@
 
 [![Logo](assets/finance_terminal.png)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 
-# FinanceTerminal 2.3.4
+# FinanceTerminal 2.3.5
 
 A lightweight Windows desktop application for currency conversion and personal portfolio tracking. Built with Python and PySide6, with local SQLite storage for investment records.
 
-**Current version:** `2.3.4`  
+**Current version:** `2.3.5`  
 **Platform:** Windows x64  
 **Download:** [Latest GitHub Release](https://github.com/RottenZombie/finance-app/releases/latest)
+Current limitation: BIST AI is currently a local portfolio-management foundation. Live BIST prices, market-value and unrealized-return calculations, KAP scanning, and AI recommendations are not included in version 2.3.5. No broker login or automatic order placement is provided.
 
 ---
 
@@ -95,8 +96,9 @@ Metal valuation uses the application's spot-price feed converted to TRY per gram
 - Single-instance protection prevents multiple copies from opening. Starting the executable again restores/activates the existing application.
 - Automatic update checks can be enabled or disabled from Settings. The application can check GitHub Releases at startup and also supports a manual update check.
 - When a newer release is found, the user is asked before it is downloaded and installed. The download window shows the downloaded/total MB, percentage, and average speed in MB/s.
+- During automatic startup checks, no notification is shown when the application is already up to date. Notifications are still shown when a newer version is available. Manual update checks continue to show the current version and any connection errors.
 - The Windows updater waits for both processes used by a PyInstaller one-file application, stages and verifies the new EXE beside the current one, keeps the previous EXE temporarily, and attempts an automatic rollback if the new version does not stay open.
-- The updater uses an explicit Windows PowerShell executable path and a hidden-process launch configuration to improve update-helper startup reliability.
+- The updater starts the replacement executable with PYINSTALLER_RESET_ENVIRONMENT=1 to ensure that the new PyInstaller one-file instance uses an independent temporary runtime environment.
 - Launcher activity, startup failures, and update-helper errors are written to `%APPDATA%\FinanceTerminal\logs\updater.log`.
 - The updater checks for early PowerShell process termination and records the process ID to simplify troubleshooting.
 - Portfolio databases and settings remain in the user's application-data directory.
@@ -164,8 +166,16 @@ The GitHub Actions workflow builds a Windows x64 executable with PyInstaller and
 
 ## Version history
 
+### 2.3.5
+- Improved automatic updater compatibility with PyInstaller one-file builds by launching the replacement application with an independent PyInstaller runtime environment.
+- Fixed an issue that could prevent the updated application from opening correctly after installation.
+- Removed unnecessary up-to-date notifications during automatic startup checks.
+- Preserved update notifications when a newer version is available.
+- Kept manual update checks informative, including current-version and error notifications.
+
 ### 2.3.4
 - Improved Windows automatic updater startup reliability.
+- Maintenance release for automatic updater testing.
 
 ### 2.3.3
 - Improved Windows automatic updater startup reliability.
