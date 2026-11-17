@@ -15,3 +15,6 @@ venv/
 # Test and local tooling output
 .pytest_cache/
 .coverage
+
+# Per-user settings live in %APPDATA%; never commit a local copy
+/config.json

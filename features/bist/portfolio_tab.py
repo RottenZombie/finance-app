@@ -4,6 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -26,17 +27,33 @@ from PySide6.QtWidgets import (
 
 from .database import BistDatabase
 from .excel_io import read_portfolio_excel, write_portfolio_excel
+from features.export_dialog import EXPORT, TEMPLATE, ask_export_mode, run_template_export
+from features.export_templates import write_bist_template
+from .quotes import Quote, describe_quote, quotes_from_payload
+from .valuation import value_holdings
 from .utils import format_quantity, format_tl, normalize_symbol, parse_localized_decimal
 
 
 class BistPortfolioTab(QWidget):
-    """Local-only BIST holdings tab. Price feeds and AI analysis are later stages."""
+    """BIST holdings tab with delayed market prices. AI analysis is a later stage."""
 
     portfolio_changed = Signal()
+    refresh_requested = Signal()
+
+    COLUMNS = (
+        "Hisse", "Şirket", "Adet", "Ort. maliyet", "Toplam maliyet", "Güncel fiyat",
+        "Piyasa değeri", "K/Z (TL)", "K/Z %", "Sektör", "Not", "Son güncelleme",
+    )
+    NUMERIC_COLUMNS = (2, 3, 4, 5, 6, 7, 8)
+
+    PROFIT_COLOR = "#16a34a"
+    LOSS_COLOR = "#dc2626"
 
     def __init__(self, parent=None, database: BistDatabase | None = None):
         super().__init__(parent)
         self.database = database or BistDatabase()
+        self._quotes: dict[str, Quote] = {}
+        self._quote_info: dict | None = None
         self._build_ui()
         self.refresh_table()
 
@@ -71,8 +88,12 @@ class BistPortfolioTab(QWidget):
         # parent to be garbage-collected, which deleted the underlying C++ label.
         self.count_card, self.count_value = self._metric_card("Hisse sayısı", "0")
         self.cost_card, self.cost_value = self._metric_card("Toplam maliyet", "0,00 ₺")
+        self.market_card, self.market_value = self._metric_card("Piyasa değeri", "Fiyat yok")
+        self.pl_card, self.pl_value = self._metric_card("Kâr / Zarar", "Veri yok")
         metrics.addWidget(self.count_card, 0, 0)
         metrics.addWidget(self.cost_card, 0, 1)
+        metrics.addWidget(self.market_card, 0, 2)
+        metrics.addWidget(self.pl_card, 0, 3)
         root.addLayout(metrics)
 
         form_frame = QFrame()
@@ -130,6 +151,8 @@ class BistPortfolioTab(QWidget):
         self.delete_button.clicked.connect(self.delete_selected)
         self.delete_all_button = QPushButton("Tüm Kayıtları Sil")
         self.delete_all_button.clicked.connect(self.delete_all)
+        self.refresh_prices_button = QPushButton("Fiyatları Güncelle")
+        self.refresh_prices_button.clicked.connect(self.refresh_requested.emit)
         self.import_button = QPushButton("Excel'den İçe Aktar")
         self.import_button.clicked.connect(self.import_excel)
         self.export_button = QPushButton("Excel'e Aktar")
@@ -137,15 +160,14 @@ class BistPortfolioTab(QWidget):
         toolbar.addWidget(self.clear_button)
         toolbar.addWidget(self.delete_button)
         toolbar.addWidget(self.delete_all_button)
+        toolbar.addWidget(self.refresh_prices_button)
         toolbar.addStretch(1)
         toolbar.addWidget(self.import_button)
         toolbar.addWidget(self.export_button)
         root.addLayout(toolbar)
 
-        self.table = QTableWidget(0, 8)
-        self.table.setHorizontalHeaderLabels(
-            ["Hisse", "Şirket", "Adet", "Ort. maliyet", "Toplam maliyet", "Sektör", "Not", "Son güncelleme"]
-        )
+        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table.setHorizontalHeaderLabels(list(self.COLUMNS))
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -155,19 +177,17 @@ class BistPortfolioTab(QWidget):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)
         header.setStretchLastSection(False)
-        for column, width in enumerate((90, 240, 90, 120, 140, 145, 220, 125)):
+        for column, width in enumerate((90, 220, 80, 110, 130, 110, 130, 120, 80, 130, 200, 115)):
             self.table.setColumnWidth(column, width)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.table.itemDoubleClicked.connect(self.edit_holding)
         root.addWidget(self.table, 1)
 
-        self.notice = QLabel(
-            "Bilgi: Bu sürüm portföy ve maliyet kayıtlarını yönetir. Güncel fiyat, getiri, "
-            "KAP taraması ve yapay zekâ analizleri sonraki geliştirme aşamasında eklenecek."
-        )
+        self.notice = QLabel("")
         self.notice.setObjectName("bistNotice")
         self.notice.setWordWrap(True)
         root.addWidget(self.notice)
+        self._update_notice()
 
     def _metric_card(self, label_text: str, initial_value: str) -> tuple[QFrame, QLabel]:
         frame = QFrame()
@@ -186,36 +206,136 @@ class BistPortfolioTab(QWidget):
     def _set_metric(self, metric_label: QLabel, text: str) -> None:
         metric_label.setText(text)
 
+    # ------------------------------------------------------------ prices
+    def set_quotes(self, payload: dict | None) -> None:
+        """Receive the quote payload produced by the refresh worker."""
+        self._quotes = quotes_from_payload(payload)
+        info = payload if isinstance(payload, dict) else {}
+        self._quote_info = {
+            "live": len(info.get("live") or []),
+            "cached": len(info.get("cached") or []),
+            "failed": list(info.get("failed") or []),
+        }
+        self._update_notice()
+        self.refresh_table()
+        self.portfolio_changed.emit()
+
+    def price_map(self) -> dict[str, Decimal] | None:
+        """Current prices by ticker for the Summary tab.
+
+        ``None`` means no price lookup has finished yet (so nothing is "missing"
+        yet); an empty dict means a lookup ran but returned no price.
+        """
+        if self._quote_info is None:
+            return None
+        return {symbol: quote.price for symbol, quote in self._quotes.items()}
+
+    def price_notes(self) -> dict[str, str]:
+        """Where/when each price came from, for the Excel export."""
+        return {symbol: describe_quote(quote) for symbol, quote in self._quotes.items()}
+
+    def _update_notice(self) -> None:
+        base = (
+            "Fiyatlar gecikmeli ve resmi olmayan kaynaklardan alınır; yatırım tavsiyesi "
+            "değildir. KAP taraması ve yapay zekâ analizleri sonraki aşamada eklenecek."
+        )
+        info = self._quote_info
+        if not info:
+            self.notice.setText("Güncel fiyatlar için \"Fiyatları Güncelle\" düğmesini kullanın. " + base)
+            return
+        parts = []
+        if info["live"]:
+            parts.append(f"{info['live']} hisse güncel")
+        if info["cached"]:
+            parts.append(f"{info['cached']} hisse önbellekten (eski fiyat)")
+        if info["failed"]:
+            parts.append("fiyat alınamayan: " + ", ".join(info["failed"]))
+        status = "Fiyat durumu: " + ("; ".join(parts) if parts else "veri yok") + ". "
+        self.notice.setText(status + base)
+
+    @staticmethod
+    def _signed(value: Decimal) -> str:
+        sign = "+" if value > 0 else ""
+        return f"{sign}{format_tl(value)}"
+
+    def _pl_color(self, value: Decimal | None) -> QBrush | None:
+        if value is None or value == 0:
+            return None
+        return QBrush(QColor(self.PROFIT_COLOR if value > 0 else self.LOSS_COLOR))
+
     def refresh_table(self) -> None:
         holdings = self.database.list_holdings()
+        valuation = value_holdings(holdings, self.price_map())
         self.table.setRowCount(len(holdings))
 
-        for row_index, holding in enumerate(holdings):
-            quantity = Decimal(holding["quantity"])
-            average_cost = Decimal(holding["average_cost"])
-            total_cost = quantity * average_cost
+        for row_index, (holding, row) in enumerate(zip(holdings, valuation["rows"])):
+            quote = self._quotes.get(holding["symbol"])
+            price = row["price"]
+            if price is None:
+                price_text, value_text, pl_text, pct_text = "–", "–", "–", "–"
+            else:
+                price_text = f"{format_tl(price)} ₺" + (" (eski)" if quote and quote.stale else "")
+                value_text = f"{format_tl(row['market_value'])} ₺"
+                pl_text = f"{self._signed(row['profit_loss'])} ₺"
+                pct = row["profit_loss_pct"]
+                pct_text = f"{self._signed(pct)} %" if pct is not None else "–"
             updated = str(holding.get("updated_at", ""))[:10]
             values = [
                 holding["symbol"],
                 holding.get("company", ""),
-                format_quantity(quantity),
-                f"{format_tl(average_cost)} ₺",
-                f"{format_tl(total_cost)} ₺",
+                format_quantity(row["quantity"]),
+                f"{format_tl(row['average_cost'])} ₺",
+                f"{format_tl(row['cost'])} ₺",
+                price_text,
+                value_text,
+                pl_text,
+                pct_text,
                 holding.get("sector", ""),
                 holding.get("notes", ""),
                 updated,
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                if column in (2, 3, 4):
+                if column in self.NUMERIC_COLUMNS:
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 if column == 0:
                     item.setData(Qt.UserRole, holding["symbol"])
+                if column == 5 and quote is not None:
+                    item.setToolTip(
+                        f"Kaynak: {quote.source}\nFiyat zamanı: {quote.as_of or 'bilinmiyor'}"
+                    )
+                if column in (7, 8):
+                    brush = self._pl_color(row["profit_loss"])
+                    if brush is not None:
+                        item.setForeground(brush)
                 self.table.setItem(row_index, column, item)
 
         summary = self.database.summary()
         self._set_metric(self.count_value, str(summary["holding_count"]))
         self._set_metric(self.cost_value, f"{format_tl(summary['total_cost'])} ₺")
+
+        market_value = valuation["market_value"]
+        if market_value is None:
+            self._set_metric(self.market_value, "Fiyat yok")
+        elif valuation["complete"]:
+            self._set_metric(self.market_value, f"{format_tl(market_value)} ₺")
+        else:
+            self._set_metric(
+                self.market_value,
+                f"{format_tl(market_value)} ₺ (kısmi: {valuation['priced_count']}/{valuation['holding_count']})",
+            )
+        profit_loss = valuation["profit_loss"]
+        if profit_loss is None:
+            self._set_metric(self.pl_value, "Veri yok")
+            self.pl_value.setStyleSheet("font-size: 17px; font-weight: 700;")
+        else:
+            pct = valuation["profit_loss_pct"]
+            suffix = f" ({self._signed(pct)} %)" if pct is not None else ""
+            if not valuation["complete"]:
+                suffix += " (kısmi)"
+            self._set_metric(self.pl_value, f"{self._signed(profit_loss)} ₺{suffix}")
+            color = "" if profit_loss == 0 else f" color: {self.PROFIT_COLOR if profit_loss > 0 else self.LOSS_COLOR};"
+            self.pl_value.setStyleSheet(f"font-size: 17px; font-weight: 700;{color}")
 
     def save_holding(self) -> None:
         try:
@@ -415,6 +535,17 @@ class BistPortfolioTab(QWidget):
             QMessageBox.warning(self, "Excel okunamadı", str(exc))
 
     def export_excel(self) -> None:
+        mode = ask_export_mode(self, "BIST portföyü")
+        if mode == TEMPLATE:
+            run_template_export(
+                self,
+                caption="BIST portföyü örnek şablonunu kaydet",
+                default_name="BIST_Portfoy_Ornek_Sablon.xlsx",
+                writer=write_bist_template,
+            )
+            return
+        if mode != EXPORT:
+            return
         holdings = self.database.list_holdings()
         if not holdings:
             QMessageBox.information(self, "BIST Portföy", "Dışa aktarılacak kayıt bulunmuyor.")
@@ -431,8 +562,10 @@ class BistPortfolioTab(QWidget):
             path += ".xlsx"
         try:
             write_portfolio_excel(
-                path, holdings, rates_updated_at=getattr(self, "rates_updated_at", None),
-                rates_status=getattr(self, "rates_status", None)
+                path, holdings,
+                prices=self.price_map() or None, price_notes=self.price_notes(),
+                rates_updated_at=getattr(self, "rates_updated_at", None),
+                rates_status=getattr(self, "rates_status", None),
             )
             QMessageBox.information(self, "Dışa aktarma tamamlandı", f"Dosya kaydedildi:\n{path}")
         except Exception as exc:

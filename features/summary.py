@@ -21,6 +21,8 @@ class SummaryPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._value_labels: dict[tuple[str, str], QLabel] = {}
+        self._bist_name_label: QLabel | None = None
+        self._bist_warning: QLabel | None = None
         self._build_ui()
         self.update_summary(
             currency_holdings=[], currency_prices={}, metal_holdings=[],
@@ -36,7 +38,7 @@ class SummaryPage(QWidget):
         title.setObjectName("summaryTitle")
         root.addWidget(title)
 
-        subtitle = QLabel("Döviz ve maden güncel piyasa değeriyle, BIST portföyü kayıtlı alış maliyetiyle gösterilir.")
+        subtitle = QLabel("Döviz ve maden güncel piyasa değeriyle gösterilir. BIST hisseleri güncel fiyat alındığında piyasa değeriyle, alınamadığında kayıtlı alış maliyetiyle gösterilir.")
         subtitle.setObjectName("summarySubtitle")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle)
@@ -65,6 +67,8 @@ class SummaryPage(QWidget):
             name = QLabel(title_text)
             name.setObjectName("summaryTotalName" if key == "total" else "summaryRowName")
             grid.addWidget(name, row_index, 0)
+            if key == "bist":
+                self._bist_name_label = name
             for col, currency in enumerate(("TRY", "EUR", "USD"), start=1):
                 value = QLabel("0,00")
                 value.setObjectName("summaryTotalValue" if key == "total" else "summaryValue")
@@ -79,13 +83,20 @@ class SummaryPage(QWidget):
             self._value_labels[(key, "PL")] = profit_value
 
         root.addWidget(frame)
+        # Names the shares whose price could not be fetched (hidden when all is well).
+        self._bist_warning = QLabel("")
+        self._bist_warning.setObjectName("summaryWarning")
+        self._bist_warning.setWordWrap(True)
+        self._bist_warning.setStyleSheet("color: #b45309; font-weight: 600;")
+        self._bist_warning.setVisible(False)
+        root.addWidget(self._bist_warning)
         note = QLabel(
-            "K/Z sütunu gerçekleşmemiş kâr/zararı TL olarak gösterir. Genel K/Z yalnızca Döviz ve "
-            "Maden kayıtlarını kapsar; BIST AI bölümünde canlı hisse fiyatı bulunmadığı için "
-            "hisse kâr/zararı hesaplanmaz. *Genel toplam, döviz ve madenin güncel değerleri ile "
-            "BIST hisselerinin kayıtlı alış maliyetinin toplamıdır. Bir gruptaki varlıklardan "
-            "birinin güncel fiyatı eksikse o grubun toplamı ve K/Z değeri eksik gösterilir; "
-            "eksik fiyat varsayılarak kâr hesaplanmaz."
+            "K/Z sütunu gerçekleşmemiş kâr/zararı TL olarak gösterir. BIST hisselerinin kâr/zararı "
+            "güncel fiyatı alınabilen hisseleri kapsar; fiyatı alınamayan hisseler uyarıda "
+            "belirtilir, kayıtlı alış maliyetiyle toplanır ve kâr/zarara dahil edilmez. "
+            "Hisse fiyatları gecikmeli ve resmi olmayan kaynaklardan gelir. Döviz veya maden "
+            "grubunda bir varlığın güncel fiyatı eksikse o grubun toplamı ve K/Z değeri eksik "
+            "gösterilir; eksik fiyat varsayılarak kâr hesaplanmaz."
         )
         note.setObjectName("summaryNote")
         note.setWordWrap(True)
@@ -102,6 +113,7 @@ class SummaryPage(QWidget):
         bist_holdings: list[dict[str, Any]],
         try_per_usd: Decimal | None,
         try_per_eur: Decimal | None,
+        bist_prices: dict[str, Decimal | None] | None = None,
     ) -> None:
         totals = calculate_portfolio_totals(
             currency_holdings=currency_holdings,
@@ -109,7 +121,14 @@ class SummaryPage(QWidget):
             metal_holdings=metal_holdings,
             metal_prices=metal_prices,
             bist_holdings=bist_holdings,
+            bist_prices=bist_prices,
         )
+        coverage = totals.get("bist_coverage", "none")
+        if self._bist_name_label is not None:
+            self._bist_name_label.setText({
+                "full": "Toplam Hisse Senedi (güncel)",
+                "partial": "Toplam Hisse Senedi (kısmen güncel)",
+            }.get(coverage, "Toplam Hisse Senedi (maliyet)"))
         for key in ("currency", "metals", "bist", "total"):
             values = convert_try_total(
                 totals[key], try_per_eur=try_per_eur, try_per_usd=try_per_usd
@@ -125,7 +144,9 @@ class SummaryPage(QWidget):
         }
         for row_key, total_key in profit_keys.items():
             value = totals[total_key]
-            if row_key == "bist" and bist_holdings:
+            if row_key == "bist" and coverage == "partial" and value is not None:
+                text = f"{format_profit_loss(value)} (kısmi)"
+            elif row_key == "bist" and coverage == "none" and bist_holdings:
                 text = "Canlı fiyat yok"
             elif value is None:
                 text = "Veri yok"
@@ -138,3 +159,30 @@ class SummaryPage(QWidget):
                 label.setStyleSheet(f"font-weight: 700; color: {color};")
             else:
                 label.setStyleSheet("")
+
+        self._update_bist_warning(
+            totals.get("bist_missing", []), coverage, lookup_done=bist_prices is not None
+        )
+
+    def _update_bist_warning(self, missing: list[str], coverage: str, *, lookup_done: bool) -> None:
+        """Warn about shares without a price instead of hiding every result."""
+        if self._bist_warning is None:
+            return
+        # Before the first price lookup finishes nothing is "missing" yet.
+        if not lookup_done or not missing or coverage not in ("partial", "none"):
+            self._bist_warning.setText("")
+            self._bist_warning.setVisible(False)
+            return
+        names = ", ".join(missing)
+        if coverage == "partial":
+            text = (
+                f"⚠ Şu hisse senetlerinin fiyatı alınamıyor: {names}. Bu hisseler kayıtlı alış "
+                "maliyetiyle toplandı; BIST kâr/zararı yalnızca fiyatı alınan hisseleri kapsar."
+            )
+        else:
+            text = (
+                f"⚠ Hiçbir hisse için güncel fiyat alınamadı ({names}). Hisseler kayıtlı alış "
+                "maliyetiyle gösteriliyor; kâr/zarar hesaplanamadı."
+            )
+        self._bist_warning.setText(text)
+        self._bist_warning.setVisible(True)

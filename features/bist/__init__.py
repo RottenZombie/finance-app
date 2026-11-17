@@ -1,3 +1,3 @@
 """BIST portfolio and investment research features for FinanceTerminal."""
 
-__version__ = "0.1.0"
+from core.version import APP_VERSION as __version__

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal
 
+from core.log_setup import get_logger
 from core.updater import check_latest_release, download_release_asset
+
+log = get_logger("update_worker")
 
 
 class UpdateCheckWorker(QThread):
@@ -17,6 +20,7 @@ class UpdateCheckWorker(QThread):
             release = check_latest_release(self.current_version)
             self.completed.emit({"release": release, "error": None})
         except Exception as exc:
+            log.warning("Güncelleme kontrolü başarısız", exc_info=True)
             self.completed.emit({"release": None, "error": str(exc)})
 
 
@@ -38,4 +42,5 @@ class UpdateDownloadWorker(QThread):
             )
             self.completed.emit({"path": str(downloaded), "error": None})
         except Exception as exc:
+            log.warning("Güncelleme indirilemedi", exc_info=True)
             self.completed.emit({"path": None, "error": str(exc)})

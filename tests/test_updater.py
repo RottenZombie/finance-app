@@ -174,6 +174,15 @@ class UpdaterTests(unittest.TestCase):
             with self.assertRaises(UpdateError):
                 download_release_asset(info)
 
+    def test_download_without_digest_is_refused_before_any_network_call(self):
+        info = parse_release_payload(self._payload(), "2.2.7")
+        self.assertIsNone(info.digest)
+        with patch("core.updater.urlopen") as opener:
+            with self.assertRaises(UpdateError) as caught:
+                download_release_asset(info)
+        opener.assert_not_called()
+        self.assertIn("SHA-256", str(caught.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

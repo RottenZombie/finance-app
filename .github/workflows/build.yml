@@ -1,4 +1,4 @@
-name: FinanceTerminal 2.3.6 - Windows EXE
+name: FinanceTerminal 2.4.1 - Windows EXE
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build FinanceTerminal 2.3.6 Windows x64
+    name: Build FinanceTerminal 2.4.1 Windows x64
     runs-on: windows-latest
 
     steps:
@@ -23,18 +23,20 @@ jobs:
         with:
           python-version: '3.14'
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
 
       - name: Install dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-build.txt
 
       - name: Verify application imports
         shell: pwsh
         run: |
-          python -c "from ui.main_window import MainWindow; from features.bist.portfolio_tab import BistPortfolioTab; from features.investment_store import InvestmentStore; from features.investment_panel import InvestmentPanel; from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker; from core.single_instance import SingleInstance; from core.app_paths import app_data_directory, settings_file_path; print('FinanceTerminal imports OK')"
+          python -c "from ui.main_window import MainWindow; from features.bist.portfolio_tab import BistPortfolioTab; from features.investment_store import InvestmentStore; from features.investment_panel import InvestmentPanel; from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker; from core.single_instance import SingleInstance; from core.app_paths import app_data_directory, settings_file_path; from core.version import APP_VERSION; from features.bist.quotes import QuoteService; from core.market_refresh import collect_market_snapshot; from core.log_setup import setup_logging; print('FinanceTerminal imports OK')"
 
       - name: Run tests
         env:
@@ -63,7 +65,7 @@ jobs:
         run: |
           @"
           Application: FinanceTerminal
-          Application version: 2.3.6
+          Application version: 2.4.1
           Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
           BIST AI: included
@@ -91,12 +93,21 @@ jobs:
           Refined Currency / Metals investment table layout: included
           Consent-based automatic updates: included
           Single-instance launch: included
+          Delayed BIST share prices with provider chain and cache: included
+          BIST market value and profit/loss: included
+          TCMB fallback for exchange rates: included
+          Last-good rates/metals cache: included
+          Application log (AppData): included
+          Mandatory SHA-256 verification for automatic updates: included
+          Excel export with profit/loss and sample-template download: included
+          Summary warning for shares without a price: included
+          Start with Windows option (Ayarlar) with optional tray start: included
           "@ | Set-Content -Path dist/build-info.txt -Encoding UTF8
 
       - name: Upload versioned EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FinanceTerminal-2.3.6-Windows-x64
+          name: FinanceTerminal-2.4.1-Windows-x64
           path: |
             dist/FinanceTerminal.exe
             dist/build-info.txt

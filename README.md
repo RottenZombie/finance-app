@@ -5,11 +5,11 @@
 
 [![Logo](assets/finance_terminal.png)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 
-# FinanceTerminal 2.3.6
+# FinanceTerminal 2.4.1
 
 A lightweight Windows desktop application for currency conversion and personal portfolio tracking. Built with Python and PySide6, with local SQLite storage for investment records.
 
-**Current version:** `2.3.6`  
+**Current version:** `2.4.1`  
 **Platform:** Windows x64  
 **Download:** [Latest GitHub Release](https://github.com/RottenZombie/finance-app/releases/latest)
 
@@ -21,7 +21,7 @@ A lightweight Windows desktop application for currency conversion and personal p
 - Shows the combined portfolio overview for Currency, Metals, and BIST holdings.
 - Displays current TRY, EUR, and USD equivalents where the required market quotes are available.
 - Shows unrealized profit/loss for currency and metal holdings when current prices are available.
-- BIST holdings are shown at recorded acquisition cost until a live BIST price feed is added. BIST is therefore excluded from market-based unrealized profit/loss.
+- BIST holdings are shown at market value when current (delayed) prices are available; holdings without a price are shown at recorded acquisition cost. BIST profit/loss is included in the total only when every share has a current price.
 
 ### Currency
 - USD/TRY, EUR/TRY, HUF/TRY, and additional supported foreign-currency rates.
@@ -54,8 +54,11 @@ A lightweight Windows desktop application for currency conversion and personal p
 - Multi-row deletion and clear-all option with confirmation.
 - Excel import/export.
 - Resizable table columns.
+- If the price of one share cannot be fetched, the Summary tab names that share in a warning and still shows profit/loss for the remaining shares (the missing share is counted at its recorded cost and left out of profit/loss).
+- Delayed share prices, market value and unrealized profit/loss (amount and percentage) per holding and in total. Prices refresh at startup and with the **Fiyatları Güncelle** button.
+- Prices come from free, keyless, unofficial sources (Yahoo Finance first, İş Yatırım daily data as a fallback) and are cached locally. If no source answers, a cached price that is at most 7 days old is shown and marked `(eski)`; older prices are never used.
 
-> **Current limitation:** BIST AI is currently a local portfolio-management foundation. Live BIST prices, market-value and unrealized-return calculations, KAP scanning, and AI recommendations are not included in version 2.3.6. No broker login or automatic order placement is provided.
+> **Current limitation:** KAP scanning and AI recommendations are not included yet. BIST prices are delayed, unofficial and for personal tracking only; they are not investment advice. No broker login or automatic order placement is provided. The Excel export records the prices and profit/loss available at the moment of export.
 
 ---
 
@@ -72,6 +75,9 @@ Metal valuation uses the application's spot-price feed converted to TRY per gram
 ## Excel import and export
 
 - Individual Currency, Metals, and BIST sections support their own Excel import/export actions.
+- Every **Excel'e Aktar** button (Currency, Metals, BIST and Export All) first asks what you want:
+  - **Verilerimi Aktar** exports your records together with the current price, value and profit/loss (amount and percentage) as of the export time. BIST sheets also show where and when each price came from; shares whose price could not be fetched are named in a warning row, and profit/loss covers only the shares that have a price.
+  - **Örnek Şablon İndir** saves the normal export file with exactly one example row per sheet (USD, gold and ASELS). It can be saved even when you have no records yet. Replace the example with your own data and load it with the matching import action. Template files are marked "Örnek şablon" on the `Veri Bilgisi` sheet.
 - The **Import All Portfolio from Excel** action reads Currency, Metals, and BIST holdings from one combined workbook.
 - The **Export All Portfolio to Excel** action creates one workbook with these sheets:
   1. `Summary`
@@ -80,6 +86,7 @@ Metal valuation uses the application's spot-price feed converted to TRY per gram
   4. `Hisse Senedi`
   5. `Veri Bilgisi`
 - Re-importing a matching record updates the saved snapshot instead of adding the same quantity again.
+- The combined `Summary` sheet has a `Kâr / Zarar (₺)` column for every group and for the grand total.
 - The `Veri Bilgisi` sheet identifies the export timestamp, last available refresh information, data status, and human-readable source names/links.
 
 ---
@@ -91,6 +98,7 @@ Metal valuation uses the application's spot-price feed converted to TRY per gram
 - Tables allow users to resize columns.
 - Close-to-system-tray behavior can be selected and remembered from Settings. The tray menu can restore the main window or exit the application.
 - When minimized to the tray, the application retains the latest displayed values. It does not perform background price refreshes; refresh remains manual.
+- **Start with Windows** (installed EXE only): the first time the packaged EXE runs it asks whether FinanceTerminal should start when you sign in to Windows; the choice can be changed any time in **Ayarlar**. A second option lets the app start hidden in the system tray. The setting uses the per-user `Run` registry key (no administrator rights) and honours Windows' own *Startup apps* switch in Task Manager. If the network is not ready right after sign-in, a failed first price refresh is retried automatically (after about 25 and 75 seconds). Prices are still refreshed only at startup and on demand.
 - Up to three independent profiles can be used. Profile 1 and Profile 2 are available initially; Profile 3 is created from the Profile Add option. Each profile has separate Currency, Metals, and BIST records, and each profile name can be changed.
 - Single-instance protection prevents multiple copies from opening. Starting the executable again restores/activates the existing application.
 - Automatic update checks can be enabled or disabled from Settings. The application can check GitHub Releases at startup and also supports a manual update check.
@@ -118,6 +126,18 @@ Typical Windows locations:
 If an older installation has its `config.json` next to the executable, the application migrates that configuration into the application-data directory on startup. On first launch of version 2.3.0, the existing 2.2.x `data` folder is copied into Profile 1; the original folder is left untouched as a recovery copy. Portfolio databases are not stored beside the executable.
 
 The application retrieves market quotes from the configured public data providers. The combined Excel export records source names and links for transparency.
+
+Cached market data (last successful exchange rates, metal prices and BIST quotes) is stored in `%APPDATA%\FinanceTerminal\cache`, and the application log is written to `%APPDATA%\FinanceTerminal\logs\app.log` (rotating, about 0.5 MB per file).
+
+### Data sources
+
+| Data | Primary | Fallback |
+| --- | --- | --- |
+| Exchange rates | open.er-api.com | TCMB `today.xml` (official; not every currency, e.g. HUF) |
+| Gold / silver | gold-api.com | last successful value (max. 7 days) |
+| BIST shares | Yahoo Finance chart endpoint | İş Yatırım public daily data, then local cache (max. 7 days) |
+
+If the last-good cache is used, the status text says so explicitly.
 
 ---
 
@@ -148,6 +168,12 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
+To check that the free price providers currently answer from your connection:
+
+```powershell
+python tools/check_quotes.py THYAO ASELS AKBNK
+```
+
 Run tests:
 
 ```powershell
@@ -158,11 +184,27 @@ python -m unittest discover -s tests -v
 
 ## Build
 
-The GitHub Actions workflow builds a Windows x64 executable with PyInstaller and runs the test suite before packaging. The Windows application icon is included in the build. Excel import/export uses `openpyxl`.
+Packaging tools are listed in `requirements-build.txt` (it includes `requirements.txt`). The GitHub Actions workflow builds a Windows x64 executable with PyInstaller and runs the test suite before packaging. The Windows application icon is included in the build. Excel import/export uses `openpyxl`.
 
 ---
 
 ## Version history
+
+### 2.4.1
+- New **Windows ile başlat** option: asked once on the first run of the packaged EXE and available in **Ayarlar**; optionally starts in the system tray. A failed first refresh right after sign-in is retried automatically.
+- Excel exports now include the current price, value and profit/loss (amount and percentage) as of the export time for BIST holdings, plus the source and time of each price. The combined `Summary` sheet gained a profit/loss column.
+- Each **Excel'e Aktar** action now offers **Verilerimi Aktar** or **Örnek Şablon İndir** (the normal export with one example row per sheet).
+- Summary tab: when a share's price cannot be fetched, a warning names it and the profit/loss of the other shares is still shown, instead of showing no BIST result at all. The BIST tab behaves the same way (marked "kısmi").
+
+### 2.4.0
+- BIST AI now shows delayed share prices, market value and unrealized profit/loss (amount and percentage). The Summary tab uses market value when every share has a price and always labels whether the BIST row is current, partially current or cost-based.
+- Free price-provider chain with a circuit breaker and a local last-good cache; stale prices are marked and expire after 7 days.
+- Exchange rates fall back to the official TCMB feed; rates and metal prices fall back to the last successful value (max. 7 days) with an explicit status text.
+- Metal price failures are now reported consistently as "no data" instead of `0`.
+- Automatic updates now require a SHA-256 digest on the release asset; without one the installation is refused (the update is still announced and can be downloaded manually).
+- Added an application log (`%APPDATA%\FinanceTerminal\logs\app.log`) and logging of previously silent provider/update errors.
+- Single version source (`core/version.py`); runtime and build requirements are split; repository housekeeping (removed committed `__pycache__` and local `config.json`).
+
 
 ### 2.3.6
 - Maintenance release following the automatic updater improvements introduced in version 2.3.5.

@@ -23,12 +23,16 @@ from features.bist.database import BistDatabase
 from features.investment_store import InvestmentStore, format_localized
 from features.currencies import CURRENCY_INFO, DEFAULT_CURRENCY_CODES, currency_display_name
 from features.investment_excel import write_combined_portfolio_excel
+from features.export_dialog import EXPORT, TEMPLATE, ask_export_mode, run_template_export
+from features.export_templates import write_combined_template
 from features.export_metadata import profile_export_filename
 from features.profile_utils import profile_selector_label, MAX_PROFILE_SELECTOR_CHARS
 from features.combined_import import (
     read_combined_portfolio_excel, apply_combined_portfolio_import,
 )
 from core.resources import resource_path
+from core.version import APP_VERSION
+from core import autostart
 from core.app_paths import (
     set_active_profile, migrate_legacy_data_to_profile1, app_data_directory, profile_directory,
 )
@@ -47,7 +51,7 @@ class MainWindow(QWidget):
         self.setWindowTitle("FinanceTerminal")
 
         # ---------------- SETTINGS ----------------
-        self.VERSION = "2.3.6"
+        self.VERSION = APP_VERSION
         self.settings = load()
         self._initialize_profile_settings()
         self.worker: Worker | None = None
@@ -143,6 +147,7 @@ class MainWindow(QWidget):
         self.portfolio.investment_panel.portfolio_changed.connect(self.refresh_summary)
         self.metals.investment_panel.portfolio_changed.connect(self.refresh_summary)
         self.bist_portfolio.portfolio_changed.connect(self.refresh_summary)
+        self.bist_portfolio.refresh_requested.connect(self.update)
 
         try:
             start_index = int(self.start_tab)
@@ -180,7 +185,7 @@ class MainWindow(QWidget):
         self.refresh_summary()
         self.update()
         # Startup update preference is asked only by the packaged Windows EXE.
-        QTimer.singleShot(1400, self._startup_update_check)
+        QTimer.singleShot(1400, self._startup_sequence)
 
 
     # ---------------- PROFILE MANAGEMENT ----------------
@@ -475,6 +480,7 @@ class MainWindow(QWidget):
             bist_holdings=self.bist_portfolio.database.list_holdings(),
             try_per_usd=self._decimal_or_none(rates.get("USD")),
             try_per_eur=self._decimal_or_none(rates.get("EUR")),
+            bist_prices=self.bist_portfolio.price_map(),
         )
 
     # ---------------- COMBINED PORTFOLIO EXPORT ----------------
@@ -482,6 +488,21 @@ class MainWindow(QWidget):
         profile_id = str(self.settings.get("active_profile", "profile1"))
         profile_name = self.profile_names[profile_id]
         suggested_filename = profile_export_filename(profile_name, profile_id)
+        mode = ask_export_mode(self, "Tüm portföy")
+        if mode == TEMPLATE:
+            run_template_export(
+                self,
+                caption="Tüm portföy örnek şablonunu kaydet",
+                default_name="FinanceTerminal_Tum_Portfoy_Ornek_Sablon.xlsx",
+                writer=lambda target: write_combined_template(
+                    target,
+                    self.portfolio.investment_panel.assets,
+                    self.metals.investment_panel.assets,
+                ),
+            )
+            return
+        if mode != EXPORT:
+            return
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Tüm portföyü tek Excel dosyasına aktar",
@@ -508,6 +529,8 @@ class MainWindow(QWidget):
                 bist_holdings=self.bist_portfolio.database.list_holdings(),
                 try_per_usd=usd_rate,
                 try_per_eur=eur_rate,
+                bist_prices=self.bist_portfolio.price_map() or None,
+                bist_price_notes=self.bist_portfolio.price_notes(),
                 rates_updated_at=rates.get("fetched_at"),
                 rates_status=rates.get("status"),
                 profile_name=profile_name,
@@ -598,6 +621,68 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "İçe aktarma tamamlandı", message)
         else:
             QMessageBox.information(self, "İçe aktarma tamamlandı", message)
+
+    # ---------------- WINDOWS STARTUP ----------------
+    def _startup_sequence(self) -> None:
+        """First-run questions are asked one after another, never stacked."""
+        self._startup_update_check()
+        self._startup_autostart_prompt()
+
+    def _apply_autostart_choice(self, enabled: bool, parent=None) -> bool:
+        """Apply the Windows-startup choice; the saved setting mirrors the real state."""
+        if not autostart.is_supported():
+            return False
+        if not autostart.set_enabled(enabled):
+            QMessageBox.warning(
+                parent or self,
+                "Windows başlangıç ayarı",
+                "Windows başlangıç ayarı değiştirilemedi. Kayıt defterine yazma izni "
+                "olmayabilir; ayarı daha sonra tekrar deneyebilirsiniz.",
+            )
+        actual = autostart.is_enabled()
+        self.settings["start_with_windows"] = actual
+        return actual
+
+    def _startup_autostart_prompt(self) -> None:
+        """Ask once (packaged Windows EXE only) whether to start with Windows."""
+        if not autostart.is_supported():
+            return
+        choice = self.settings.get("start_with_windows", None)
+        if choice is None:
+            dialog = QMessageBox(self)
+            dialog.setWindowTitle("Windows ile başlat")
+            dialog.setIcon(QMessageBox.Icon.Question)
+            dialog.setText("Bilgisayar açıldığında FinanceTerminal otomatik başlasın mı?")
+            dialog.setInformativeText(
+                "Evet derseniz Windows'a giriş yaptığınızda uygulama kendiliğinden açılır "
+                "ve güncel fiyatları alır. Bu seçimi istediğiniz zaman Ayarlar'dan "
+                "değiştirebilirsiniz."
+            )
+            dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            dialog.setDefaultButton(QMessageBox.StandardButton.No)
+            enabled = dialog.exec() == QMessageBox.StandardButton.Yes
+            self._apply_autostart_choice(enabled)
+            save(self.settings)
+        elif choice:
+            # The EXE may have been moved or updated; keep the saved entry pointing at it.
+            autostart.repair_command()
+
+    def should_start_in_tray(self) -> bool:
+        return bool(
+            self.settings.get("start_in_tray", False)
+            and self._tray_available
+            and self._tray_icon is not None
+        )
+
+    def start_hidden_in_tray(self) -> None:
+        """Used when Windows starts the app: no window, just the tray icon."""
+        self._minimize_to_tray(notify=False)
+
+    def retry_refresh_if_offline(self) -> None:
+        """Right after sign-in the network may not be ready yet; try once more."""
+        status = str((getattr(self, "last_data", None) or {}).get("status", ""))
+        if status.startswith("Offline"):
+            self.update()
 
     # ---------------- SOFTWARE UPDATES ----------------
     def _startup_update_check(self) -> None:
@@ -859,7 +944,7 @@ class MainWindow(QWidget):
         self.raise_()
         self.activateWindow()
 
-    def _minimize_to_tray(self) -> None:
+    def _minimize_to_tray(self, notify: bool = True) -> None:
         if not self._tray_available or self._tray_icon is None:
             QMessageBox.information(
                 self, "Sistem tepsisi kullanılamıyor",
@@ -872,6 +957,8 @@ class MainWindow(QWidget):
         self._in_tray = True
         self._tray_icon.show()
         self.hide()
+        if not notify:
+            return
         try:
             self._tray_icon.showMessage(
                 "FinanceTerminal çalışıyor",
@@ -949,7 +1036,14 @@ class MainWindow(QWidget):
             current_worker.deleteLater()
             self.worker = None
 
-        worker = Worker(self)
+        try:
+            bist_symbols = [
+                str(row["symbol"]) for row in self.bist_portfolio.database.list_holdings()
+            ]
+        except Exception:
+            # A database problem must never block currency/metal refresh.
+            bist_symbols = []
+        worker = Worker(self, bist_symbols=bist_symbols)
         self.worker = worker
         worker.result.connect(self.on_data)
         worker.finished.connect(self._on_update_finished)
@@ -1031,6 +1125,10 @@ class MainWindow(QWidget):
         )
         self.bist_portfolio.rates_updated_at = d.get("fetched_at")
         self.bist_portfolio.rates_status = d.get("status")
+        if "bist_quotes" in d:
+            # Present only in the worker's second emission (after BIST prices
+            # arrive); set_quotes also refreshes the summary.
+            self.bist_portfolio.set_quotes(d.get("bist_quotes"))
         self.last.setText(d.get("status", "-"))
         self.refresh_summary()
 
@@ -1157,6 +1255,19 @@ class MainWindow(QWidget):
         auto_update.setChecked(bool(self.settings.get("auto_update_check", False)))
         update_btn = QPushButton("Güncellemeleri Kontrol Et")
 
+        autostart_supported = autostart.is_supported()
+        autostart_box = QCheckBox("Bilgisayar açıldığında FinanceTerminal otomatik başlasın")
+        start_in_tray = QCheckBox("Otomatik başlarken pencere açılmasın, sistem tepsisinde başlasın")
+        if autostart_supported:
+            autostart_box.setChecked(autostart.is_enabled())
+        else:
+            autostart_box.setEnabled(False)
+            autostart_box.setToolTip("Bu seçenek yalnızca Windows'ta kurulu (EXE) sürümde kullanılabilir.")
+        start_in_tray.setChecked(bool(self.settings.get("start_in_tray", False)))
+        tray_possible = bool(self._tray_available and autostart_supported)
+        start_in_tray.setEnabled(tray_possible and autostart_box.isChecked())
+        autostart_box.toggled.connect(lambda checked: start_in_tray.setEnabled(tray_possible and checked))
+
         help_btn = QPushButton("Yardım / Kullanım Kılavuzu")
         help_btn.clicked.connect(lambda: self.open_help(dlg))
 
@@ -1171,6 +1282,9 @@ class MainWindow(QWidget):
             self.settings["theme"] = self.theme_preference
             self.settings["summary_tab_migrated"] = True
             self.settings["auto_update_check"] = auto_update.isChecked()
+            if autostart_supported:
+                self._apply_autostart_choice(autostart_box.isChecked(), parent=dlg)
+            self.settings["start_in_tray"] = start_in_tray.isChecked()
             close_choice = close_behavior.currentData()
             self.settings["close_to_tray"] = (
                 None if close_choice == "ask" else close_choice == "tray"
@@ -1196,6 +1310,8 @@ class MainWindow(QWidget):
         layout.addWidget(QLabel("Pencereyi X ile kapatınca"))
         layout.addWidget(close_behavior)
         layout.addWidget(auto_update)
+        layout.addWidget(autostart_box)
+        layout.addWidget(start_in_tray)
         layout.addWidget(QLabel(
             "Yeni sürüm bulunduğunda indirme ve kurulum için ayrıca onayınız istenir. "
             "Kişisel portföy verileri %APPDATA%\\FinanceTerminal altında saklanır."
@@ -1223,8 +1339,9 @@ class MainWindow(QWidget):
         <h3>Summary</h3>
         <p>Döviz, maden ve hisse senedi portföylerinizin toplam değerini TRY, EUR
         ve USD cinsinden özetler. Fiyatlar yenilendiğinde ve portföy kayıtları
-        değiştiğinde özet otomatik güncellenir. BIST AI bölümünde canlı fiyat
-        bulunmadığından hisse toplamı kayıtlı alış maliyeti üzerinden hesaplanır.</p>
+        değiştiğinde özet otomatik güncellenir. BIST hisseleri için güncel fiyat
+        alınabildiğinde piyasa değeri kullanılır; alınamayan hisseler kayıtlı alış
+        maliyetiyle gösterilir ve kâr/zarar hesaplanmaz.</p>
 
         <h3>Currency</h3>
         <p>USD, EUR, HUF ve seçtiğiniz diğer desteklenen para birimlerinin kurlarını gösterir.
@@ -1248,8 +1365,12 @@ class MainWindow(QWidget):
 
         <h3>BIST AI</h3>
         <p>Hisse kodu, şirket adı, adet ve ortalama alış maliyetinizi kaydedin.
-        Kayıtlar bilgisayarınızda saklanır ve Excel'e aktarılabilir. Bu sürümde
-        canlı BIST fiyatı ve yapay zekâ analizi henüz bulunmamaktadır.</p>
+        Kayıtlar bilgisayarınızda saklanır ve Excel'e aktarılabilir. Uygulama
+        açıldığında ve <b>Fiyatları Güncelle</b> düğmesiyle güncel (gecikmeli) hisse
+        fiyatları alınır; piyasa değeri ve kâr/zarar hesaplanır. Fiyatlar resmi
+        olmayan ücretsiz kaynaklardan gelir ve yatırım tavsiyesi değildir. İnternet
+        yoksa son alınan fiyat (en çok 7 gün eski) "eski" işaretiyle gösterilir.
+        Yapay zekâ analizi henüz bulunmamaktadır.</p>
 
         <h3>Tüm Portföyü Excel'e Aktar</h3>
         <p>Üstteki düğme tüm bölümleri tek Excel dosyasına aktarır. Dosyada Summary,

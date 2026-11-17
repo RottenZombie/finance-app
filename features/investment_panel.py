@@ -33,6 +33,8 @@ from features.investment_store import (
     write_holdings_excel,
 )
 from features.investment_excel import read_investment_holdings_excel
+from features.export_dialog import EXPORT, TEMPLATE, ask_export_mode, run_template_export
+from features.export_templates import template_filename, write_investment_template
 
 
 class InvestmentPanel(QGroupBox):
@@ -418,6 +420,18 @@ class InvestmentPanel(QGroupBox):
             QMessageBox.warning(self, "Excel okunamadı", str(exc))
 
     def export_excel(self) -> None:
+        section = "Döviz portföyü" if self.asset_group == "currency" else "Metal portföyü"
+        mode = ask_export_mode(self, section)
+        if mode == TEMPLATE:
+            run_template_export(
+                self,
+                caption=f"{section} örnek şablonunu kaydet",
+                default_name=template_filename(self.export_filename),
+                writer=lambda target: write_investment_template(target, self.asset_group, self.assets),
+            )
+            return
+        if mode != EXPORT:
+            return
         holdings = self.store.list_holdings(self.asset_group)
         if not holdings:
             QMessageBox.information(self, "Dışa aktarma", "Dışa aktarılacak kayıt bulunmuyor.")

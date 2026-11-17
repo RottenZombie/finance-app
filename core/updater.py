@@ -157,7 +157,16 @@ def download_release_asset(
     timeout: int = 30,
     progress_callback: Callable[[int, int, float], None] | None = None,
 ) -> Path:
-    """Download and verify the release EXE; optionally report bytes and average speed."""
+    """Download and verify the release EXE; optionally report bytes and average speed.
+
+    A SHA-256 digest is mandatory: without it the file cannot be authenticated,
+    so the automatic installation is refused before anything is downloaded.
+    """
+    if not info.digest:
+        raise UpdateError(
+            "Bu sürümde SHA-256 özeti bulunmadığı için dosya doğrulanamadı ve otomatik "
+            "kurulum yapılmadı. Güncellemeyi GitHub sürüm sayfasından elle indirebilirsiniz."
+        )
     request = Request(
         info.download_url,
         headers={"User-Agent": USER_AGENT, "Accept": "application/octet-stream"},
@@ -194,7 +203,7 @@ def download_release_asset(
         with temp_path.open("rb") as downloaded:
             if downloaded.read(2) != b"MZ":
                 raise UpdateError("İndirilen dosya geçerli bir Windows EXE dosyası değil.")
-        if info.digest and digest.hexdigest().lower() != info.digest.lower():
+        if digest.hexdigest().lower() != info.digest.lower():
             raise UpdateError("İndirilen dosyanın SHA-256 doğrulaması başarısız.")
         if progress_callback is not None:
             elapsed = max(time.monotonic() - started_at, 0.001)

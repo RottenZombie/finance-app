@@ -4,12 +4,13 @@ from decimal import Decimal
 from pathlib import Path
 import re
 import unicodedata
-from typing import Any
+from typing import Any, Mapping
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from features.bist.valuation import value_holdings
 from features.export_metadata import add_export_metadata_sheet
 from features.investment_store import format_localized, parse_localized_decimal
 
@@ -213,6 +214,8 @@ def write_combined_portfolio_excel(
     bist_holdings: list[dict[str, Any]],
     try_per_usd: Decimal | None,
     try_per_eur: Decimal | None,
+    bist_prices: Mapping[str, Decimal] | None = None,
+    bist_price_notes: Mapping[str, str] | None = None,
     rates_updated_at: str | None = None,
     rates_status: str | None = None,
     profile_name: str | None = None,
@@ -222,12 +225,12 @@ def write_combined_portfolio_excel(
     summary = workbook.active
     summary.title = "Summary"
     summary.append(["FinanceTerminal | Portföy Özeti"])
-    summary.append(["Anlık kayıt özeti. Döviz ve maden güncel fiyatları; BIST ise canlı fiyat verisi olmadığı için kayıtlı alış maliyeti üzerinden hesaplanır."])
+    summary.append(["Anlık kayıt özeti. Döviz, maden ve fiyatı alınabilen hisseler güncel fiyatla; fiyatı alınamayan hisseler kayıtlı alış maliyetiyle hesaplanır. Kâr/zarar dışa aktarma anındaki fiyatlara göredir."])
     if profile_name:
         summary.append(["Bu dosya şu profile aittir", profile_name])
     else:
         summary.append([])
-    summary.append(["Portföy", "Hesaplama Esası", "TRY", "EUR", "USD"])
+    summary.append(["Portföy", "Hesaplama Esası", "TRY", "EUR", "USD", "Kâr / Zarar (₺)"])
 
     currency_cost, currency_value = _append_investment_sheet(
         workbook, title="Döviz", holdings=currency_holdings, current_prices=currency_prices
@@ -239,23 +242,51 @@ def write_combined_portfolio_excel(
     bist = workbook.create_sheet("Hisse Senedi")
     bist.append([
         "Hisse Kodu", "Şirket Adı", "Adet", "Ortalama Maliyet (₺)",
-        "Kayıtlı Maliyet (₺)", "Sektör", "Notlar", "Güncel Fiyat / Değer",
+        "Kayıtlı Maliyet (₺)", "Sektör", "Notlar", "Güncel Fiyat (₺)",
+        "Güncel Değer (₺)", "Kâr / Zarar (₺)", "Kâr / Zarar (%)", "Fiyat Kaynağı / Zamanı",
     ])
-    bist_cost = Decimal("0")
-    for holding in bist_holdings:
-        quantity = Decimal(str(holding["quantity"]))
-        average_cost = Decimal(str(holding["average_cost"]))
-        cost = quantity * average_cost
-        bist_cost += cost
+    valuation = value_holdings(bist_holdings, bist_prices)
+    price_notes = bist_price_notes or {}
+    bist_cost = valuation["total_cost"]
+    for holding, row in zip(bist_holdings, valuation["rows"]):
+        price = row["price"]
         bist.append([
-            holding["symbol"], holding.get("company", ""), float(quantity),
-            float(average_cost), float(cost), holding.get("sector", ""),
-            holding.get("notes", ""), "Canlı fiyat verisi yok",
+            holding["symbol"], holding.get("company", ""), float(row["quantity"]),
+            float(row["average_cost"]), float(row["cost"]), holding.get("sector", ""),
+            holding.get("notes", ""),
+            float(price) if price is not None else None,
+            float(row["market_value"]) if row["market_value"] is not None else None,
+            float(row["profit_loss"]) if row["profit_loss"] is not None else None,
+            float(row["profit_loss_pct"]) if row["profit_loss_pct"] is not None else None,
+            price_notes.get(row["symbol"]) or ("Fiyat alınamadı" if price is None else ""),
         ])
     _style_sheet(bist)
     for row in bist.iter_rows(min_row=2, min_col=3, max_col=5):
         for cell in row:
             cell.number_format = '#,##0.00'
+    for row in bist.iter_rows(min_row=2, min_col=8, max_col=10):
+        for cell in row:
+            cell.number_format = '#,##0.00'
+    for row in bist.iter_rows(min_row=2, min_col=11, max_col=11):
+        for cell in row:
+            cell.number_format = '0.00"%"'
+
+    # Value of the BIST group: market value where a price exists, recorded cost
+    # for the rest (never a guess). Profit/loss covers the priced holdings only.
+    bist_value = bist_cost
+    for row in valuation["rows"]:
+        if row["market_value"] is not None:
+            bist_value += row["market_value"] - row["cost"]
+    bist_missing = valuation["missing"]
+    if not bist_holdings:
+        bist_basis = "Kayıtlı alış maliyeti (kayıt yok)"
+    elif valuation["complete"]:
+        bist_basis = "Güncel piyasa değeri"
+    elif valuation["priced_count"]:
+        bist_basis = "Kısmen güncel değer (fiyatı alınamayanlar alış maliyetiyle)"
+    else:
+        bist_basis = "Kayıtlı alış maliyeti (güncel fiyat alınamadı)"
+    bist_profit = valuation["profit_loss"] if bist_holdings else Decimal("0")
 
     def currencies(try_value: Decimal | None) -> tuple[float | None, float | None, float | None]:
         if try_value is None:
@@ -264,30 +295,48 @@ def write_combined_portfolio_excel(
         usd_value = try_value / try_per_usd if try_per_usd and try_per_usd > 0 else None
         return float(try_value), float(eur_value) if eur_value is not None else None, float(usd_value) if usd_value is not None else None
 
+    currency_profit = currency_value - currency_cost if currency_value is not None else None
+    metal_profit = metal_value - metal_cost if metal_value is not None else None
     summary_rows = [
-        ("Döviz", "Güncel piyasa değeri", currency_value),
-        ("Maden", "Güncel piyasa değeri", metal_value),
-        ("Hisse Senedi", "Kayıtlı alış maliyeti (canlı fiyat yok)", bist_cost),
+        ("Döviz", "Güncel piyasa değeri", currency_value, currency_profit),
+        ("Maden", "Güncel piyasa değeri", metal_value, metal_profit),
+        ("Hisse Senedi", bist_basis, bist_value, bist_profit),
     ]
-    available_totals = [value for _name, _basis, value in summary_rows if value is not None]
+    available_totals = [value for _name, _basis, value, _pl in summary_rows if value is not None]
     grand_total = sum(available_totals, Decimal("0")) if len(available_totals) == len(summary_rows) else None
 
-    for name, basis, value in summary_rows:
+    for name, basis, value, profit in summary_rows:
         try_value, eur_value, usd_value = currencies(value)
-        summary.append([name, basis, try_value, eur_value, usd_value])
+        summary.append([name, basis, try_value, eur_value, usd_value,
+                        float(profit) if profit is not None else None])
+    # Total profit/loss: currency + metals (+ BIST when at least one share is priced).
+    grand_profit = (
+        currency_profit + metal_profit
+        if currency_profit is not None and metal_profit is not None else None
+    )
+    if grand_profit is not None and bist_profit is not None:
+        grand_profit += bist_profit
     try_value, eur_value, usd_value = currencies(grand_total)
-    summary.append(["GENEL TOPLAM", "Döviz + maden güncel değerleri ve hisse kayıtlı maliyeti", try_value, eur_value, usd_value])
+    summary.append(["GENEL TOPLAM", "Döviz + maden + hisse (hisse: güncel fiyat varsa piyasa değeri, yoksa maliyet)",
+                    try_value, eur_value, usd_value,
+                    float(grand_profit) if grand_profit is not None else None])
 
     note_row = summary.max_row + 2
     summary.cell(note_row, 1, "Not:")
-    summary.cell(note_row, 2, "BIST sekmesinde henüz canlı hisse fiyatı bulunmadığından hisse toplamı alış maliyetidir. Genel toplam, tüm grupların güncel değerleri mevcutsa hesaplanır.")
+    summary.cell(
+        note_row, 2,
+        ("⚠ Şu hisse senetlerinin fiyatı alınamadı: " + ", ".join(bist_missing)
+         + ". Bu hisseler alış maliyetiyle toplandı ve kâr/zarara dahil edilmedi.")
+        if bist_missing else
+        "Hisse fiyatları gecikmeli ve resmi olmayan kaynaklardan alınır. Genel toplam, tüm grupların değerleri mevcutsa hesaplanır.",
+    )
     summary.cell(note_row + 1, 2, "EUR ve USD karşılıkları dışa aktarma anındaki döviz kurlarıyla çevrilmiştir.")
     summary.cell(note_row + 2, 2, "İlgili fiyat veya kur verisi yoksa grup ve genel toplam değerleri eksik hesaplanmaması için boş bırakılır.")
-    summary.merge_cells(start_row=1, start_column=1, end_row=1, end_column=5)
-    summary.merge_cells(start_row=2, start_column=1, end_row=2, end_column=5)
-    summary.merge_cells(start_row=note_row, start_column=2, end_row=note_row, end_column=5)
-    summary.merge_cells(start_row=note_row + 1, start_column=2, end_row=note_row + 1, end_column=5)
-    summary.merge_cells(start_row=note_row + 2, start_column=2, end_row=note_row + 2, end_column=5)
+    summary.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
+    summary.merge_cells(start_row=2, start_column=1, end_row=2, end_column=6)
+    summary.merge_cells(start_row=note_row, start_column=2, end_row=note_row, end_column=6)
+    summary.merge_cells(start_row=note_row + 1, start_column=2, end_row=note_row + 1, end_column=6)
+    summary.merge_cells(start_row=note_row + 2, start_column=2, end_row=note_row + 2, end_column=6)
     summary["A1"].font = Font(size=16, bold=True, color="FFFFFF")
     summary["A1"].fill = PatternFill("solid", fgColor="203864")
     summary["A2"].alignment = Alignment(wrap_text=True, vertical="center")
@@ -302,7 +351,7 @@ def write_combined_portfolio_excel(
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="203864")
         cell.alignment = Alignment(horizontal="center")
-    for row in summary.iter_rows(min_row=5, max_row=8, min_col=3, max_col=5):
+    for row in summary.iter_rows(min_row=5, max_row=8, min_col=3, max_col=6):
         for cell in row:
             cell.number_format = '#,##0.00'
     for cell in summary[8]:
@@ -310,7 +359,7 @@ def write_combined_portfolio_excel(
         cell.fill = PatternFill("solid", fgColor="D9EAF7")
     summary.column_dimensions["A"].width = 22
     summary.column_dimensions["B"].width = 58
-    for col in ("C", "D", "E"):
+    for col in ("C", "D", "E", "F"):
         summary.column_dimensions[col].width = 18
     summary.sheet_view.showGridLines = False
     summary.freeze_panes = "A5"

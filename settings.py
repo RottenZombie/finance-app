@@ -11,6 +11,8 @@ DEFAULT = {
     "start_tab": 0,
     "close_to_tray": None,
     "auto_update_check": None,
+    "start_with_windows": None,   # None = ask once on the packaged EXE
+    "start_in_tray": False,       # when started by Windows, stay in the tray
     "active_profile": "profile1",
     "profile_names": {"profile1": "Profil 1", "profile2": "Profil 2"},  # Profile 3 is created on demand.
     "currency_codes": ["USD", "EUR", "HUF"],

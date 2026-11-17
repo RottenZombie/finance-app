@@ -43,14 +43,14 @@ def add_export_metadata_sheet(
     sheet.append(["Excel oluşturulma zamanı", local_timestamp()])
     sheet.append(["Uygulamada son veri güncelleme zamanı", rates_updated_at or "Bilinmiyor"])
     sheet.append(["Döviz veri bağlantı durumu", rates_status or "Bilinmiyor"])
-    sheet.append(["Döviz kuru kaynağı", "ExchangeRate-API | USD bazlı TRY, EUR ve HUF kurları"])
+    sheet.append(["Döviz kuru kaynağı", "ExchangeRate-API | USD bazlı TRY, EUR ve HUF kurları (ulaşılamazsa yedek: TCMB günlük kurları)"])
     sheet.append(["Döviz sağlayıcı sitesi", CURRENCY_SOURCE_URL])
     sheet.append(["Altın fiyat kaynağı", "Gold API | XAU (USD / troy ons)"])
     sheet.append(["Altın sağlayıcı sitesi", GOLD_SOURCE_URL])
     sheet.append(["Gümüş fiyat kaynağı", "Gold API | XAG (USD / troy ons)"])
     sheet.append(["Gümüş sağlayıcı sitesi", SILVER_SOURCE_URL])
     if include_bist_note:
-        sheet.append(["Hisse fiyat bilgisi", "Bu sürümde canlı BIST fiyatı yoktur; kayıtlı alış maliyeti kullanılır."])
+        sheet.append(["Hisse fiyat bilgisi", "BIST hisse fiyatları gecikmeli ve resmi olmayan kaynaklardan (Yahoo Finance, yedek: İş Yatırım) alınır. Fiyatı alınamayan hisseler kayıtlı alış maliyetiyle gösterilir ve kâr/zarara dahil edilmez."])
     sheet.append(["Not", "Fiyatlar dışa aktarım sırasında uygulamada bulunan son veri değerleridir; bu dosya fiyat geçmişi oluşturmaz."])
     if profile_name:
         sheet.append(["Bu dosyanın ait olduğu profil", profile_name])
