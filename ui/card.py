@@ -2,6 +2,8 @@ from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel
 from PySide6.QtWidgets import QGraphicsDropShadowEffect
 from PySide6.QtCore import QPropertyAnimation
 
+from ui.themes import EXTRA_THEMES, build_card_stylesheet
+
 
 class Card(QFrame):
     def __init__(self, title, subtitle=None):
@@ -41,7 +43,9 @@ class Card(QFrame):
         self.setGraphicsEffect(effect)
 
     def apply_theme(self, theme):
-        if theme == "Blue":
+        if theme in EXTRA_THEMES:
+            self.setStyleSheet(build_card_stylesheet(EXTRA_THEMES[theme]))
+        elif theme == "Blue":
             self.setStyleSheet("""
                 QFrame {
                     background:#1a2740;

@@ -8,6 +8,7 @@ import requests
 
 from core.log_setup import get_logger
 from features.currencies import CURRENCY_INFO
+from core.i18n import tr
 
 log = get_logger("api")
 
@@ -98,7 +99,7 @@ def _fetch_tcmb() -> dict[str, Any]:
     result: dict[str, Any] = {"TRY": 1.0}
     for code in CURRENCY_INFO:
         result[code] = rates.get(code)
-    result["status"] = "Online (TCMB yedek)"
+    result["status"] = tr("Online (TCMB yedek)")
     return result
 
 

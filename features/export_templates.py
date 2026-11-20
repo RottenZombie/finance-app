@@ -13,26 +13,35 @@ from typing import Any
 from features.bist.excel_io import write_portfolio_excel
 from features.investment_excel import write_combined_portfolio_excel
 from features.investment_store import write_holdings_excel
+from core.i18n import tr
 
-TEMPLATE_STATUS = "Örnek şablon (gerçek veri değildir)"
+def template_status() -> str:
+    return tr("Örnek şablon (gerçek veri değildir)")
+
 
 # (asset code, quantity, average cost in TRY, sample current price in TRY)
 _SAMPLES = {
     "currency": ("USD", "100", "30", "35"),
     "metals": ("XAU", "10", "2800", "3000"),
 }
-_TITLES = {"currency": "Döviz Portföyü", "metals": "Metal Portföyü"}
 
-SAMPLE_BIST_HOLDING: dict[str, Any] = {
-    "symbol": "ASELS",
-    "company": "Aselsan Elektronik",
-    "quantity": "10",
-    "average_cost": "75.50",
-    "sector": "Savunma",
-    "notes": "Örnek kayıt - kendi verinizle değiştirin",
-}
+
+def _title(asset_group: str) -> str:
+    return {"currency": tr("Döviz Portföyü"), "metals": tr("Metal Portföyü")}[asset_group]
+
+
+def sample_bist_holding() -> dict[str, Any]:
+    return {
+        "symbol": "ASELS",
+        "company": "Aselsan Elektronik",
+        "quantity": "10",
+        "average_cost": "75.50",
+        "sector": tr("Savunma"),
+        "notes": tr("Örnek kayıt - kendi verinizle değiştirin"),
+    }
+
+
 SAMPLE_BIST_PRICE = Decimal("80")
-SAMPLE_BIST_NOTE = "Örnek fiyat"
 
 
 def template_filename(filename: str) -> str:
@@ -58,21 +67,22 @@ def write_investment_template(
 ) -> None:
     """Currency or metals template: the normal export with one example row."""
     if asset_group not in _SAMPLES:
-        raise ValueError("Geçersiz portföy türü.")
+        raise ValueError(tr("Geçersiz portföy türü."))
     holding, price = _sample_holding(asset_group, assets)
     write_holdings_excel(
         path, [holding], {holding["asset_code"]: price},
-        title=_TITLES[asset_group],
-        rates_updated_at=TEMPLATE_STATUS, rates_status=TEMPLATE_STATUS,
+        title=_title(asset_group),
+        rates_updated_at=template_status(), rates_status=template_status(),
     )
 
 
 def write_bist_template(path: str | Path) -> None:
+    holding = sample_bist_holding()
     write_portfolio_excel(
-        path, [dict(SAMPLE_BIST_HOLDING)],
-        prices={SAMPLE_BIST_HOLDING["symbol"]: SAMPLE_BIST_PRICE},
-        price_notes={SAMPLE_BIST_HOLDING["symbol"]: SAMPLE_BIST_NOTE},
-        rates_updated_at=TEMPLATE_STATUS, rates_status=TEMPLATE_STATUS,
+        path, [holding],
+        prices={holding["symbol"]: SAMPLE_BIST_PRICE},
+        price_notes={holding["symbol"]: tr("Örnek fiyat")},
+        rates_updated_at=template_status(), rates_status=template_status(),
     )
 
 
@@ -84,18 +94,19 @@ def write_combined_template(
     """All-in-one template: Summary, Döviz, Maden, Hisse Senedi with one example each."""
     currency, currency_price = _sample_holding("currency", currency_assets)
     metal, metal_price = _sample_holding("metals", metal_assets)
-    symbol = SAMPLE_BIST_HOLDING["symbol"]
+    holding = sample_bist_holding()
+    symbol = holding["symbol"]
     write_combined_portfolio_excel(
         path,
         currency_holdings=[currency],
         currency_prices={currency["asset_code"]: currency_price},
         metal_holdings=[metal],
         metal_prices={metal["asset_code"]: metal_price},
-        bist_holdings=[dict(SAMPLE_BIST_HOLDING)],
+        bist_holdings=[holding],
         try_per_usd=Decimal("35"),
         try_per_eur=Decimal("38"),
         bist_prices={symbol: SAMPLE_BIST_PRICE},
-        bist_price_notes={symbol: SAMPLE_BIST_NOTE},
-        rates_updated_at=TEMPLATE_STATUS,
-        rates_status=TEMPLATE_STATUS,
+        bist_price_notes={symbol: tr("Örnek fiyat")},
+        rates_updated_at=template_status(),
+        rates_status=template_status(),
     )

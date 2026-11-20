@@ -15,7 +15,8 @@ from openpyxl.utils import get_column_letter
 
 from features.export_metadata import add_export_metadata_sheet
 from core.app_paths import data_directory
-from features.currencies import CURRENCY_INFO
+from features.currencies import CURRENCY_INFO, asset_display_name, currency_rank
+from core.i18n import tr
 
 
 ALLOWED_ASSETS = {
@@ -29,16 +30,16 @@ def default_database_path() -> Path:
     return data_directory() / "investment_holdings.db"
 
 
-def parse_localized_decimal(value: object, *, field_name: str = "Değer") -> Decimal:
+def parse_localized_decimal(value: object, *, field_name: str = tr("Değer")) -> Decimal:
     """Parse Turkish and English decimal formats without using binary floats."""
     if isinstance(value, Decimal):
         number = value
     elif value is None:
-        raise ValueError(f"{field_name} boş bırakılamaz.")
+        raise ValueError(tr("{0} boş bırakılamaz.").format(field_name))
     else:
         raw = str(value).strip()
         if not raw:
-            raise ValueError(f"{field_name} boş bırakılamaz.")
+            raise ValueError(tr("{0} boş bırakılamaz.").format(field_name))
         raw = raw.replace("₺", "").replace("TL", "").replace("TRY", "")
         raw = raw.replace(" ", "").replace("\u00a0", "")
         if "," in raw and "." in raw:
@@ -52,14 +53,14 @@ def parse_localized_decimal(value: object, *, field_name: str = "Değer") -> Dec
             parts = raw.split(".")
             raw = "".join(parts[:-1]) + "." + parts[-1]
         if not re.fullmatch(r"[+-]?\d+(?:\.\d+)?", raw):
-            raise ValueError(f"{field_name} geçerli bir sayı değil: {value}")
+            raise ValueError(tr("{0} geçerli bir sayı değil: {1}").format(field_name, value))
         try:
             number = Decimal(raw)
         except InvalidOperation as exc:
-            raise ValueError(f"{field_name} geçerli bir sayı değil: {value}") from exc
+            raise ValueError(tr("{0} geçerli bir sayı değil: {1}").format(field_name, value)) from exc
 
     if not number.is_finite():
-        raise ValueError(f"{field_name} sonlu bir sayı olmalı.")
+        raise ValueError(tr("{0} sonlu bir sayı olmalı.").format(field_name))
     return number
 
 
@@ -128,13 +129,13 @@ class InvestmentStore:
         group = str(asset_group).strip().lower()
         code = str(asset_code).strip().upper()
         if group not in ALLOWED_ASSETS or code not in ALLOWED_ASSETS[group]:
-            raise ValueError("Geçersiz varlık türü veya kodu.")
+            raise ValueError(tr("Geçersiz varlık türü veya kodu."))
         qty = parse_localized_decimal(quantity, field_name="Miktar")
-        price = parse_localized_decimal(unit_cost_try, field_name="Alış birim fiyatı")
+        price = parse_localized_decimal(unit_cost_try, field_name=tr("Alış birim fiyatı"))
         if qty <= 0:
-            raise ValueError("Miktar sıfırdan büyük olmalıdır.")
+            raise ValueError(tr("Miktar sıfırdan büyük olmalıdır."))
         if price <= 0:
-            raise ValueError("Alış birim fiyatı sıfırdan büyük olmalıdır.")
+            raise ValueError(tr("Alış birim fiyatı sıfırdan büyük olmalıdır."))
 
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         with self._connection() as connection:
@@ -195,11 +196,11 @@ class InvestmentStore:
         group = str(asset_group).strip().lower()
         code = str(asset_code).strip().upper()
         if group not in ALLOWED_ASSETS or code not in ALLOWED_ASSETS[group]:
-            raise ValueError("Geçersiz varlık türü veya kodu.")
+            raise ValueError(tr("Geçersiz varlık türü veya kodu."))
         qty = parse_localized_decimal(quantity, field_name="Miktar")
-        average = parse_localized_decimal(average_cost_try, field_name="Ortalama alış fiyatı")
+        average = parse_localized_decimal(average_cost_try, field_name=tr("Ortalama alış fiyatı"))
         if qty <= 0 or average <= 0:
-            raise ValueError("Miktar ve ortalama alış fiyatı sıfırdan büyük olmalıdır.")
+            raise ValueError(tr("Miktar ve ortalama alış fiyatı sıfırdan büyük olmalıdır."))
 
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         with self._connection() as connection:
@@ -227,19 +228,34 @@ class InvestmentStore:
                 "SELECT * FROM investment_holdings WHERE asset_group = ? AND asset_code = ?",
                 (str(asset_group).strip().lower(), str(asset_code).strip().upper()),
             ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        holding = dict(row)
+        holding["display_name"] = asset_display_name(
+            holding["asset_group"], holding["asset_code"], holding["display_name"]
+        )
+        return holding
 
     def list_holdings(self, asset_group: str) -> list[dict[str, Any]]:
         group = str(asset_group).strip().lower()
         if group not in ALLOWED_ASSETS:
-            raise ValueError("Geçersiz portföy türü.")
+            raise ValueError(tr("Geçersiz portföy türü."))
         with self._connection() as connection:
             rows = connection.execute(
                 "SELECT * FROM investment_holdings WHERE asset_group = ? "
                 "ORDER BY asset_code COLLATE NOCASE",
                 (group,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        holdings = [dict(row) for row in rows]
+        for holding in holdings:
+            # Always show the name in the active language, even for old records.
+            holding["display_name"] = asset_display_name(
+                group, holding["asset_code"], holding["display_name"]
+            )
+        if group == "currency":
+            # Same order as every currency drop-down (global usage ranking).
+            holdings.sort(key=lambda item: currency_rank(item["asset_code"]))
+        return holdings
 
     def delete_holding(self, asset_group: str, asset_code: str) -> bool:
         return self.delete_holdings(asset_group, [asset_code]) > 0
@@ -250,7 +266,7 @@ class InvestmentStore:
         """Delete selected assets, or every holding in a group when codes is None."""
         group = str(asset_group).strip().lower()
         if group not in ALLOWED_ASSETS:
-            raise ValueError("Geçersiz portföy türü.")
+            raise ValueError(tr("Geçersiz portföy türü."))
 
         with self._connection() as connection:
             if asset_codes is None:
@@ -263,7 +279,7 @@ class InvestmentStore:
                     return 0
                 invalid = [code for code in codes if code not in ALLOWED_ASSETS[group]]
                 if invalid:
-                    raise ValueError("Silinecek varlık kodu geçersiz.")
+                    raise ValueError(tr("Silinecek varlık kodu geçersiz."))
                 placeholders = ",".join("?" for _ in codes)
                 cursor = connection.execute(
                     f"DELETE FROM investment_holdings WHERE asset_group = ? AND asset_code IN ({placeholders})",
@@ -290,15 +306,15 @@ def write_holdings_excel(
     sheet.title = title[:31]
     sheet.append([
         "Kod",
-        "Varlık",
+        tr("Varlık"),
         "Miktar",
         "Birim",
-        "Ortalama Alış Fiyatı (₺)",
-        "Toplam Maliyet (₺)",
-        "Güncel Birim Fiyat (₺)",
-        "Güncel Değer (₺)",
-        "Kâr / Zarar (₺)",
-        "Kâr / Zarar (%)",
+        tr("Ortalama Alış Fiyatı (₺)"),
+        tr("Toplam Maliyet (₺)"),
+        tr("Güncel Birim Fiyat (₺)"),
+        tr("Güncel Değer (₺)"),
+        tr("Kâr / Zarar (₺)"),
+        tr("Kâr / Zarar (%)"),
     ])
 
     for holding in holdings:

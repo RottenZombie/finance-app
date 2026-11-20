@@ -20,6 +20,8 @@ from PySide6.QtCore import QObject, Signal, QLockFile, QTimer
 
 from core.app_paths import app_data_directory
 
+from core.i18n import tr
+
 
 class SingleInstance(QObject):
     """Keep one FinanceTerminal process per Windows user/session."""
@@ -86,7 +88,7 @@ class SingleInstance(QObject):
                 os.fsync(handle.fileno())
             return True
         except OSError as exc:
-            self.error_string = f"Ana uygulamaya uyandırma sinyali gönderilemedi: {exc}"
+            self.error_string = tr("Ana uygulamaya uyandırma sinyali gönderilemedi: {0}").format(exc)
             return False
 
     def _start_or_signal_existing(self) -> bool:
@@ -94,7 +96,7 @@ class SingleInstance(QObject):
             if self._lock_file.error() == QLockFile.LockError.LockFailedError:
                 self.activation_sent = self._send_activation()
                 return False
-            self.error_string = f"Tek uygulama kilidi alınamadı: {self._lock_file.error()}"
+            self.error_string = tr("Tek uygulama kilidi alınamadı: {0}").format(self._lock_file.error())
             return False
         return True
 

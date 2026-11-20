@@ -13,6 +13,8 @@ DEFAULT = {
     "auto_update_check": None,
     "start_with_windows": None,   # None = ask once on the packaged EXE
     "start_in_tray": False,       # when started by Windows, stay in the tray
+    "language": "tr",             # "tr" or "en"
+    "calculator_extra_currency": "HUF",
     "active_profile": "profile1",
     "profile_names": {"profile1": "Profil 1", "profile2": "Profil 2"},  # Profile 3 is created on demand.
     "currency_codes": ["USD", "EUR", "HUF"],
@@ -135,6 +137,6 @@ def resolve_theme(preference: str) -> str:
     value = str(preference or "System").strip()
     if value.lower() in {"system", "auto", "windows"}:
         return detect_system_theme()
-    if value in {"White", "Dark", "Blue"}:
+    if value in {"White", "Dark", "Blue", "Midnight", "Emerald"}:
         return value
     return detect_system_theme()

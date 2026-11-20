@@ -13,7 +13,7 @@ from features.bist.quotes import Quote, describe_quote
 from features.combined_import import read_combined_portfolio_excel
 from features.currencies import CURRENCY_INFO
 from features.export_templates import (
-    TEMPLATE_STATUS,
+    template_status,
     template_filename,
     write_bist_template,
     write_combined_template,
@@ -102,7 +102,7 @@ class CombinedExportTests(unittest.TestCase):
             bist_price_notes={"ASELS": "Test · 13.11.2026"},
             try_per_usd=Decimal("35"), try_per_eur=Decimal("38"),
         )
-        return {r[0]: r for r in rows(self.path, "Summary") if r and r[0]}
+        return {r[0]: r for r in rows(self.path, "Özet") if r and r[0]}
 
     def test_summary_has_profit_loss_column_with_full_prices(self):
         summary = self.export({"ASELS": Decimal("80"), "THYAO": Decimal("180")})
@@ -120,7 +120,7 @@ class CombinedExportTests(unittest.TestCase):
         self.assertEqual(summary["Hisse Senedi"][5], 45)
         self.assertEqual(summary["Hisse Senedi"][2], 800 + 1000)  # unpriced share at cost
         self.assertEqual(summary["GENEL TOPLAM"][5], 10 + 45)
-        notes = " ".join(str(c) for r in rows(self.path, "Summary") for c in r if c)
+        notes = " ".join(str(c) for r in rows(self.path, "Özet") for c in r if c)
         self.assertIn("Şu hisse senetlerinin fiyatı alınamadı: THYAO", notes)
 
     def test_no_prices_means_cost_basis_and_no_stock_profit_loss(self):
@@ -167,7 +167,7 @@ class TemplateTests(unittest.TestCase):
     def test_combined_template_has_one_example_per_sheet(self):
         write_combined_template(self.dir / "all.xlsx", CURRENCY_INFO, METALS)
         workbook = load_workbook(self.dir / "all.xlsx")
-        self.assertEqual(workbook.sheetnames, ["Summary", "Döviz", "Maden", "Hisse Senedi", "Veri Bilgisi"])
+        self.assertEqual(workbook.sheetnames, ["Özet", "Döviz", "Maden", "Hisse Senedi", "Veri Bilgisi"])
         workbook.close()
         data = read_combined_portfolio_excel(self.dir / "all.xlsx", currency_assets=CURRENCY_INFO, metal_assets=METALS)
         self.assertEqual((len(data["currency"]), len(data["metals"]), len(data["bist"])), (1, 1, 1))
@@ -175,7 +175,7 @@ class TemplateTests(unittest.TestCase):
     def test_templates_are_marked_as_not_real_data(self):
         write_bist_template(self.dir / "b.xlsx")
         info = " ".join(str(c) for r in rows(self.dir / "b.xlsx", "Veri Bilgisi") for c in r if c)
-        self.assertIn(TEMPLATE_STATUS, info)
+        self.assertIn(template_status(), info)
 
 
 class DescribeQuoteTests(unittest.TestCase):

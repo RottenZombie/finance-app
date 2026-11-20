@@ -29,6 +29,7 @@ from core.app_paths import app_data_directory
 from core.cache import load_json, save_json_atomic
 from core.log_setup import get_logger
 from .utils import normalize_symbol
+from core.i18n import tr
 
 log = get_logger("bist.quotes")
 
@@ -386,7 +387,7 @@ def describe_quote(quote: Quote) -> str:
     """Short human text for exports/tooltips, e.g. 'Yahoo Finance · 13.11.2026 10:00'."""
     when = _format_when(quote.as_of) or _format_when(quote.fetched_at)
     text = quote.source + (f" · {when}" if when else "")
-    return text + " (eski fiyat)" if quote.stale else text
+    return text + tr(" (eski fiyat)") if quote.stale else text
 
 
 def fetch_bist_quotes(symbols: Iterable[object], service: QuoteService | None = None) -> dict[str, Any]:

@@ -8,6 +8,7 @@ from openpyxl import load_workbook
 
 from features.investment_excel import read_investment_holdings_excel
 from features.bist.excel_io import read_portfolio_excel
+from core.i18n import tr
 
 
 def _normalise_sheet_name(value: object) -> str:
@@ -19,7 +20,7 @@ def _normalise_sheet_name(value: object) -> str:
 SHEET_ALIASES = {
     "currency": {"doviz", "currency", "currencies"},
     "metals": {"maden", "metals", "metal"},
-    "bist": {"hissesenedi", "bistportfoy", "bistai"},
+    "bist": {"hissesenedi", "bistportfoy", "bistai", "stocks", "stock", "bistportfolio"},
 }
 
 
@@ -50,8 +51,7 @@ def read_combined_portfolio_excel(
     }
     if not any(found.values()):
         raise ValueError(
-            "Dosyada tanınan portföy sayfası bulunamadı. Beklenen sayfalar: "
-            "Döviz, Maden ve Hisse Senedi."
+            tr("Dosyada tanınan portföy sayfası bulunamadı. Beklenen sayfalar: Döviz, Maden ve Hisse Senedi.")
         )
 
     result: dict[str, Any] = {

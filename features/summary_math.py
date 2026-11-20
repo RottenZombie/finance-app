@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any
 
 from features.investment_store import format_localized
+from core.i18n import tr
 
 
 def current_market_total(
@@ -110,13 +111,13 @@ def convert_try_total(
     try_per_usd: Decimal | None,
 ) -> dict[str, str]:
     if try_value is None:
-        return {"TRY": "Veri yok", "EUR": "Veri yok", "USD": "Veri yok"}
+        return {"TRY": tr("Veri yok"), "EUR": tr("Veri yok"), "USD": tr("Veri yok")}
     return {
         "TRY": format_localized(try_value),
         "EUR": format_localized(try_value / try_per_eur)
-        if try_per_eur is not None and try_per_eur > 0 else "Kur yok",
+        if try_per_eur is not None and try_per_eur > 0 else tr("Kur yok"),
         "USD": format_localized(try_value / try_per_usd)
-        if try_per_usd is not None and try_per_usd > 0 else "Kur yok",
+        if try_per_usd is not None and try_per_usd > 0 else tr("Kur yok"),
     }
 
 

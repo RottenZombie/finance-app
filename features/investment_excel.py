@@ -13,6 +13,7 @@ from openpyxl.utils import get_column_letter
 from features.bist.valuation import value_holdings
 from features.export_metadata import add_export_metadata_sheet
 from features.investment_store import format_localized, parse_localized_decimal
+from core.i18n import tr
 
 
 def _normalise_header(value: object) -> str:
@@ -27,7 +28,7 @@ HEADER_ALIASES = {
     "quantity": {"miktar", "adet", "quantity", "amount"},
     "average_cost": {
         "ortalamaalisfiyatitl", "ortalamaalisfiyati", "ortalamaalis", "ortalamaalisfiyat",
-        "ortalamaaliyat", "ortalamaalisfiyattry",
+        "ortalamaaliyat", "ortalamaalisfiyattry", "averagepurchasepricetry", "averagepurchaseprice",
         "averagecosttry", "averagecost", "avgcost", "unitcosttry", "birimfiyat",
     },
 }
@@ -60,11 +61,11 @@ def read_investment_holdings_excel(
     """
     group = str(asset_group).strip().lower()
     preferred = {
-        "currency": {"doviz", "dovizportfoyu", "currency", "currencies"},
-        "metals": {"maden", "metalportfoyu", "metals", "metal"},
+        "currency": {"doviz", "dovizportfoyu", "currency", "currencies", "currencyportfolio"},
+        "metals": {"maden", "metalportfoyu", "metals", "metal", "metalsportfolio", "metalportfolio"},
     }.get(group)
     if preferred is None:
-        raise ValueError("Geçersiz portföy türü.")
+        raise ValueError(tr("Geçersiz portföy türü."))
 
     workbook = load_workbook(Path(path), read_only=True, data_only=True)
     try:
@@ -80,7 +81,7 @@ def read_investment_holdings_excel(
             if selected_sheet is None:
                 selected_sheet, selected_map = sheet, mapping
         if selected_sheet is None:
-            raise ValueError("Uygun portföy sayfası veya gerekli sütunlar bulunamadı.")
+            raise ValueError(tr("Uygun portföy sayfası veya gerekli sütunlar bulunamadı."))
 
         aggregated: dict[str, dict[str, Any]] = {}
         errors: list[str] = []
@@ -92,17 +93,17 @@ def read_investment_holdings_excel(
             if not code:
                 continue
             if code not in allowed_assets:
-                errors.append(f"Satır {row_number}: Bu bölümde desteklenmeyen varlık kodu: {code}")
+                errors.append(tr("Satır {0}: Bu bölümde desteklenmeyen varlık kodu: {1}").format(row_number, code))
                 continue
             try:
                 quantity_index = selected_map["quantity"]
                 cost_index = selected_map["average_cost"]
                 quantity = parse_localized_decimal(row[quantity_index] if quantity_index < len(row) else None, field_name="Miktar")
-                average_cost = parse_localized_decimal(row[cost_index] if cost_index < len(row) else None, field_name="Ortalama alış fiyatı")
+                average_cost = parse_localized_decimal(row[cost_index] if cost_index < len(row) else None, field_name=tr("Ortalama alış fiyatı"))
                 if quantity <= 0 or average_cost <= 0:
-                    raise ValueError("Miktar ve ortalama alış fiyatı sıfırdan büyük olmalıdır.")
+                    raise ValueError(tr("Miktar ve ortalama alış fiyatı sıfırdan büyük olmalıdır."))
             except Exception as exc:
-                errors.append(f"Satır {row_number}: {exc}")
+                errors.append(tr("Satır {0}: {1}").format(row_number, exc))
                 continue
 
             if code in aggregated:
@@ -122,7 +123,7 @@ def read_investment_holdings_excel(
                 }
 
         if not aggregated and errors:
-            raise ValueError("İçe aktarılabilir kayıt bulunamadı.\n" + "\n".join(errors[:10]))
+            raise ValueError(tr("İçe aktarılabilir kayıt bulunamadı.\n") + "\n".join(errors[:10]))
         result = list(aggregated.values())
         # Keep parser diagnostics attached for the UI without breaking the row schema.
         for item in result:
@@ -155,9 +156,9 @@ def _append_investment_sheet(
 ) -> tuple[Decimal, Decimal | None]:
     sheet = workbook.create_sheet(title)
     sheet.append([
-        "Kod", "Varlık", "Miktar", "Birim", "Ortalama Alış Fiyatı (₺)",
-        "Toplam Maliyet (₺)", "Güncel Birim Fiyat (₺)", "Güncel Değer (₺)",
-        "Kâr / Zarar (₺)", "Kâr / Zarar (%)",
+        "Kod", tr("Varlık"), "Miktar", "Birim", tr("Ortalama Alış Fiyatı (₺)"),
+        tr("Toplam Maliyet (₺)"), tr("Güncel Birim Fiyat (₺)"), tr("Güncel Değer (₺)"),
+        tr("Kâr / Zarar (₺)"), tr("Kâr / Zarar (%)"),
     ])
     total_cost = Decimal("0")
     total_current_value = Decimal("0")
@@ -223,27 +224,27 @@ def write_combined_portfolio_excel(
     """Create one workbook with an executive Summary followed by detailed asset sheets."""
     workbook = Workbook()
     summary = workbook.active
-    summary.title = "Summary"
-    summary.append(["FinanceTerminal | Portföy Özeti"])
-    summary.append(["Anlık kayıt özeti. Döviz, maden ve fiyatı alınabilen hisseler güncel fiyatla; fiyatı alınamayan hisseler kayıtlı alış maliyetiyle hesaplanır. Kâr/zarar dışa aktarma anındaki fiyatlara göredir."])
+    summary.title = tr("Özet")
+    summary.append([tr("FinanceTerminal | Portföy Özeti")])
+    summary.append([tr("Anlık kayıt özeti. Döviz, maden ve fiyatı alınabilen hisseler güncel fiyatla; fiyatı alınamayan hisseler kayıtlı alış maliyetiyle hesaplanır. Kâr/zarar dışa aktarma anındaki fiyatlara göredir.")])
     if profile_name:
-        summary.append(["Bu dosya şu profile aittir", profile_name])
+        summary.append([tr("Bu dosya şu profile aittir"), profile_name])
     else:
         summary.append([])
-    summary.append(["Portföy", "Hesaplama Esası", "TRY", "EUR", "USD", "Kâr / Zarar (₺)"])
+    summary.append([tr("Portföy"), tr("Hesaplama Esası"), "TRY", "EUR", "USD", tr("Kâr / Zarar (₺)")])
 
     currency_cost, currency_value = _append_investment_sheet(
-        workbook, title="Döviz", holdings=currency_holdings, current_prices=currency_prices
+        workbook, title=tr("Döviz"), holdings=currency_holdings, current_prices=currency_prices
     )
     metal_cost, metal_value = _append_investment_sheet(
-        workbook, title="Maden", holdings=metal_holdings, current_prices=metal_prices
+        workbook, title=tr("Maden"), holdings=metal_holdings, current_prices=metal_prices
     )
 
-    bist = workbook.create_sheet("Hisse Senedi")
+    bist = workbook.create_sheet(tr("Hisse Senedi"))
     bist.append([
-        "Hisse Kodu", "Şirket Adı", "Adet", "Ortalama Maliyet (₺)",
-        "Kayıtlı Maliyet (₺)", "Sektör", "Notlar", "Güncel Fiyat (₺)",
-        "Güncel Değer (₺)", "Kâr / Zarar (₺)", "Kâr / Zarar (%)", "Fiyat Kaynağı / Zamanı",
+        tr("Hisse Kodu"), tr("Şirket Adı"), "Adet", tr("Ortalama Maliyet (₺)"),
+        tr("Kayıtlı Maliyet (₺)"), tr("Sektör"), "Notlar", tr("Güncel Fiyat (₺)"),
+        tr("Güncel Değer (₺)"), tr("Kâr / Zarar (₺)"), tr("Kâr / Zarar (%)"), tr("Fiyat Kaynağı / Zamanı"),
     ])
     valuation = value_holdings(bist_holdings, bist_prices)
     price_notes = bist_price_notes or {}
@@ -258,7 +259,7 @@ def write_combined_portfolio_excel(
             float(row["market_value"]) if row["market_value"] is not None else None,
             float(row["profit_loss"]) if row["profit_loss"] is not None else None,
             float(row["profit_loss_pct"]) if row["profit_loss_pct"] is not None else None,
-            price_notes.get(row["symbol"]) or ("Fiyat alınamadı" if price is None else ""),
+            price_notes.get(row["symbol"]) or (tr("Fiyat alınamadı") if price is None else ""),
         ])
     _style_sheet(bist)
     for row in bist.iter_rows(min_row=2, min_col=3, max_col=5):
@@ -279,13 +280,13 @@ def write_combined_portfolio_excel(
             bist_value += row["market_value"] - row["cost"]
     bist_missing = valuation["missing"]
     if not bist_holdings:
-        bist_basis = "Kayıtlı alış maliyeti (kayıt yok)"
+        bist_basis = tr("Kayıtlı alış maliyeti (kayıt yok)")
     elif valuation["complete"]:
-        bist_basis = "Güncel piyasa değeri"
+        bist_basis = tr("Güncel piyasa değeri")
     elif valuation["priced_count"]:
-        bist_basis = "Kısmen güncel değer (fiyatı alınamayanlar alış maliyetiyle)"
+        bist_basis = tr("Kısmen güncel değer (fiyatı alınamayanlar alış maliyetiyle)")
     else:
-        bist_basis = "Kayıtlı alış maliyeti (güncel fiyat alınamadı)"
+        bist_basis = tr("Kayıtlı alış maliyeti (güncel fiyat alınamadı)")
     bist_profit = valuation["profit_loss"] if bist_holdings else Decimal("0")
 
     def currencies(try_value: Decimal | None) -> tuple[float | None, float | None, float | None]:
@@ -298,9 +299,9 @@ def write_combined_portfolio_excel(
     currency_profit = currency_value - currency_cost if currency_value is not None else None
     metal_profit = metal_value - metal_cost if metal_value is not None else None
     summary_rows = [
-        ("Döviz", "Güncel piyasa değeri", currency_value, currency_profit),
-        ("Maden", "Güncel piyasa değeri", metal_value, metal_profit),
-        ("Hisse Senedi", bist_basis, bist_value, bist_profit),
+        (tr("Döviz"), tr("Güncel piyasa değeri"), currency_value, currency_profit),
+        (tr("Maden"), tr("Güncel piyasa değeri"), metal_value, metal_profit),
+        (tr("Hisse Senedi"), bist_basis, bist_value, bist_profit),
     ]
     available_totals = [value for _name, _basis, value, _pl in summary_rows if value is not None]
     grand_total = sum(available_totals, Decimal("0")) if len(available_totals) == len(summary_rows) else None
@@ -317,21 +318,21 @@ def write_combined_portfolio_excel(
     if grand_profit is not None and bist_profit is not None:
         grand_profit += bist_profit
     try_value, eur_value, usd_value = currencies(grand_total)
-    summary.append(["GENEL TOPLAM", "Döviz + maden + hisse (hisse: güncel fiyat varsa piyasa değeri, yoksa maliyet)",
+    summary.append([tr("GENEL TOPLAM"), tr("Döviz + maden + hisse (hisse: güncel fiyat varsa piyasa değeri, yoksa maliyet)"),
                     try_value, eur_value, usd_value,
                     float(grand_profit) if grand_profit is not None else None])
 
     note_row = summary.max_row + 2
-    summary.cell(note_row, 1, "Not:")
+    summary.cell(note_row, 1, tr("Not:"))
     summary.cell(
         note_row, 2,
-        ("⚠ Şu hisse senetlerinin fiyatı alınamadı: " + ", ".join(bist_missing)
-         + ". Bu hisseler alış maliyetiyle toplandı ve kâr/zarara dahil edilmedi.")
+        (tr("⚠ Şu hisse senetlerinin fiyatı alınamadı: ") + ", ".join(bist_missing)
+         + tr(". Bu hisseler alış maliyetiyle toplandı ve kâr/zarara dahil edilmedi."))
         if bist_missing else
-        "Hisse fiyatları gecikmeli ve resmi olmayan kaynaklardan alınır. Genel toplam, tüm grupların değerleri mevcutsa hesaplanır.",
+        tr("Hisse fiyatları gecikmeli ve resmi olmayan kaynaklardan alınır. Genel toplam, tüm grupların değerleri mevcutsa hesaplanır."),
     )
-    summary.cell(note_row + 1, 2, "EUR ve USD karşılıkları dışa aktarma anındaki döviz kurlarıyla çevrilmiştir.")
-    summary.cell(note_row + 2, 2, "İlgili fiyat veya kur verisi yoksa grup ve genel toplam değerleri eksik hesaplanmaması için boş bırakılır.")
+    summary.cell(note_row + 1, 2, tr("EUR ve USD karşılıkları dışa aktarma anındaki döviz kurlarıyla çevrilmiştir."))
+    summary.cell(note_row + 2, 2, tr("İlgili fiyat veya kur verisi yoksa grup ve genel toplam değerleri eksik hesaplanmaması için boş bırakılır."))
     summary.merge_cells(start_row=1, start_column=1, end_row=1, end_column=6)
     summary.merge_cells(start_row=2, start_column=1, end_row=2, end_column=6)
     summary.merge_cells(start_row=note_row, start_column=2, end_row=note_row, end_column=6)

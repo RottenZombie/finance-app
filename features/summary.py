@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QVBoxLayout, QWidget
 
 from features.summary_math import calculate_portfolio_totals, convert_try_total
 from features.investment_store import format_localized
+from core.i18n import tr
 
 
 def format_profit_loss(value: Decimal) -> str:
@@ -34,11 +35,11 @@ class SummaryPage(QWidget):
         root.setContentsMargins(20, 18, 20, 20)
         root.setSpacing(12)
 
-        title = QLabel("Portföy Özeti")
+        title = QLabel(tr("Portföy Özeti"))
         title.setObjectName("summaryTitle")
         root.addWidget(title)
 
-        subtitle = QLabel("Döviz ve maden güncel piyasa değeriyle gösterilir. BIST hisseleri güncel fiyat alındığında piyasa değeriyle, alınamadığında kayıtlı alış maliyetiyle gösterilir.")
+        subtitle = QLabel(tr("Döviz ve maden güncel piyasa değeriyle gösterilir. BIST hisseleri güncel fiyat alındığında piyasa değeriyle, alınamadığında kayıtlı alış maliyetiyle gösterilir."))
         subtitle.setObjectName("summarySubtitle")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle)
@@ -50,7 +51,7 @@ class SummaryPage(QWidget):
         grid.setHorizontalSpacing(20)
         grid.setVerticalSpacing(14)
 
-        headers = ["Portföy", "TRY", "EUR", "USD", "K/Z (TRY)"]
+        headers = [tr("Portföy"), "TRY", "EUR", "USD", "K/Z (TRY)"]
         for col, text in enumerate(headers):
             label = QLabel(text)
             label.setObjectName("summaryHeader")
@@ -58,10 +59,10 @@ class SummaryPage(QWidget):
             grid.addWidget(label, 0, col)
 
         rows = [
-            ("currency", "Toplam Döviz"),
-            ("metals", "Toplam Maden"),
-            ("bist", "Toplam Hisse Senedi (maliyet)"),
-            ("total", "GENEL TOPLAM*"),
+            ("currency", tr("Toplam Döviz")),
+            ("metals", tr("Toplam Maden")),
+            ("bist", tr("Toplam Hisse Senedi (maliyet)")),
+            ("total", tr("GENEL TOPLAM*")),
         ]
         for row_index, (key, title_text) in enumerate(rows, start=1):
             name = QLabel(title_text)
@@ -91,12 +92,7 @@ class SummaryPage(QWidget):
         self._bist_warning.setVisible(False)
         root.addWidget(self._bist_warning)
         note = QLabel(
-            "K/Z sütunu gerçekleşmemiş kâr/zararı TL olarak gösterir. BIST hisselerinin kâr/zararı "
-            "güncel fiyatı alınabilen hisseleri kapsar; fiyatı alınamayan hisseler uyarıda "
-            "belirtilir, kayıtlı alış maliyetiyle toplanır ve kâr/zarara dahil edilmez. "
-            "Hisse fiyatları gecikmeli ve resmi olmayan kaynaklardan gelir. Döviz veya maden "
-            "grubunda bir varlığın güncel fiyatı eksikse o grubun toplamı ve K/Z değeri eksik "
-            "gösterilir; eksik fiyat varsayılarak kâr hesaplanmaz."
+            tr("K/Z sütunu gerçekleşmemiş kâr/zararı TL olarak gösterir. BIST hisselerinin kâr/zararı güncel fiyatı alınabilen hisseleri kapsar; fiyatı alınamayan hisseler uyarıda belirtilir, kayıtlı alış maliyetiyle toplanır ve kâr/zarara dahil edilmez. Hisse fiyatları gecikmeli ve resmi olmayan kaynaklardan gelir. Döviz veya maden grubunda bir varlığın güncel fiyatı eksikse o grubun toplamı ve K/Z değeri eksik gösterilir; eksik fiyat varsayılarak kâr hesaplanmaz.")
         )
         note.setObjectName("summaryNote")
         note.setWordWrap(True)
@@ -126,9 +122,9 @@ class SummaryPage(QWidget):
         coverage = totals.get("bist_coverage", "none")
         if self._bist_name_label is not None:
             self._bist_name_label.setText({
-                "full": "Toplam Hisse Senedi (güncel)",
-                "partial": "Toplam Hisse Senedi (kısmen güncel)",
-            }.get(coverage, "Toplam Hisse Senedi (maliyet)"))
+                "full": tr("Toplam Hisse Senedi (güncel)"),
+                "partial": tr("Toplam Hisse Senedi (kısmen güncel)"),
+            }.get(coverage, tr("Toplam Hisse Senedi (maliyet)")))
         for key in ("currency", "metals", "bist", "total"):
             values = convert_try_total(
                 totals[key], try_per_eur=try_per_eur, try_per_usd=try_per_usd
@@ -145,11 +141,11 @@ class SummaryPage(QWidget):
         for row_key, total_key in profit_keys.items():
             value = totals[total_key]
             if row_key == "bist" and coverage == "partial" and value is not None:
-                text = f"{format_profit_loss(value)} (kısmi)"
+                text = tr("{0} (kısmi)").format(format_profit_loss(value))
             elif row_key == "bist" and coverage == "none" and bist_holdings:
-                text = "Canlı fiyat yok"
+                text = tr("Canlı fiyat yok")
             elif value is None:
-                text = "Veri yok"
+                text = tr("Veri yok")
             else:
                 text = format_profit_loss(value)
             label = self._value_labels[(row_key, "PL")]
@@ -176,13 +172,11 @@ class SummaryPage(QWidget):
         names = ", ".join(missing)
         if coverage == "partial":
             text = (
-                f"⚠ Şu hisse senetlerinin fiyatı alınamıyor: {names}. Bu hisseler kayıtlı alış "
-                "maliyetiyle toplandı; BIST kâr/zararı yalnızca fiyatı alınan hisseleri kapsar."
+                tr("⚠ Şu hisse senetlerinin fiyatı alınamıyor: {0}. Bu hisseler kayıtlı alış maliyetiyle toplandı; BIST kâr/zararı yalnızca fiyatı alınan hisseleri kapsar.").format(names)
             )
         else:
             text = (
-                f"⚠ Hiçbir hisse için güncel fiyat alınamadı ({names}). Hisseler kayıtlı alış "
-                "maliyetiyle gösteriliyor; kâr/zarar hesaplanamadı."
+                tr("⚠ Hiçbir hisse için güncel fiyat alınamadı ({0}). Hisseler kayıtlı alış maliyetiyle gösteriliyor; kâr/zarar hesaplanamadı.").format(names)
             )
         self._bist_warning.setText(text)
         self._bist_warning.setVisible(True)

@@ -5,9 +5,11 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from core.autostart import AUTOSTART_FLAG
+from core.i18n import set_language, tr
 from core.log_setup import setup_logging
 from core.resources import resource_path
 from core.single_instance import SingleInstance
+from settings import load as load_settings
 from ui.main_window import MainWindow
 
 
@@ -26,6 +28,8 @@ def set_windows_app_user_model_id() -> None:
 
 
 setup_logging()
+# The language must be known before any window or text is created.
+set_language(load_settings().get("language", "tr"))
 set_windows_app_user_model_id()
 app = QApplication(sys.argv)
 app.setApplicationName("FinanceTerminal")
@@ -42,8 +46,8 @@ if not single_instance.is_primary:
     if error:
         QMessageBox.critical(
             None,
-            "FinanceTerminal başlatılamadı",
-            "Tek uygulama örneği başlatılamadı. Bilgisayarınızı yeniden başlatıp tekrar deneyin.\n\n"
+            tr("FinanceTerminal başlatılamadı"),
+            tr("Tek uygulama örneği başlatılamadı. Bilgisayarınızı yeniden başlatıp tekrar deneyin.\n\n")
             + str(error),
         )
     sys.exit(0)
@@ -51,6 +55,7 @@ if not single_instance.is_primary:
 w = MainWindow()
 w.setWindowIcon(QIcon(str(resource_path("assets/finance_terminal.png"))))
 single_instance.activated.connect(w.show_from_second_instance)
+w.single_instance = single_instance  # lets the window release the lock when restarting
 # Keep the IPC server alive for the complete QApplication lifetime.
 app._finance_terminal_single_instance = single_instance
 app.aboutToQuit.connect(single_instance.close)

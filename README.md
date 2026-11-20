@@ -5,11 +5,11 @@
 
 [![Logo](assets/finance_terminal.png)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 
-# FinanceTerminal 2.4.1
+# FinanceTerminal 2.5.0
 
 A lightweight Windows desktop application for currency conversion and personal portfolio tracking. Built with Python and PySide6, with local SQLite storage for investment records.
 
-**Current version:** `2.4.1`  
+**Current version:** `2.5.0`  
 **Platform:** Windows x64  
 **Download:** [Latest GitHub Release](https://github.com/RottenZombie/finance-app/releases/latest)
 
@@ -21,17 +21,20 @@ A lightweight Windows desktop application for currency conversion and personal p
 - Shows the combined portfolio overview for Currency, Metals, and BIST holdings.
 - Displays current TRY, EUR, and USD equivalents where the required market quotes are available.
 - Shows unrealized profit/loss for currency and metal holdings when current prices are available.
-- BIST holdings are shown at market value when current (delayed) prices are available; holdings without a price are shown at recorded acquisition cost. BIST profit/loss is included in the total only when every share has a current price.
+- BIST holdings are shown at market value when current (delayed) prices are available; holdings without a price are shown at recorded acquisition cost. BIST profit/loss covers the shares that have a current price; shares whose price could not be fetched are named in a warning, counted at cost and left out of profit/loss.
 
 ### Currency
-- USD/TRY, EUR/TRY, HUF/TRY, and additional supported foreign-currency rates.
-- Choose which currency cards are visible; CHF (Swiss franc), CZK (Czech koruna), and other supported currencies can be enabled.
+- 39 supported foreign currencies, including the Romanian leu (RON), Swedish krona (SEK), Ukrainian hryvnia (UAH), Serbian dinar (RSD), Georgian lari (GEL) and more; the TRY rate of each is shown when the rate provider supplies it.
+- Choose which currency cards are visible (USD, EUR and HUF are shown by default).
+- Every currency list in the application (card chooser, calculator inputs/outputs, holdings tables) uses the same order, by share of global foreign-exchange turnover according to the BIS Triennial Survey 2025: USD, EUR, JPY, GBP, CNY, CHF, AUD, CAD, HKD, SGD, ... The order is one tuple (`CURRENCY_RANKING` in `features/currencies.py`) and can be changed in one place.
 - Normal and inverse conversion display.
 - Manual rate refresh.
 - Saved holdings for supported currencies with quantity and weighted-average acquisition cost.
 - Current TRY valuation and unrealized profit/loss when a current quote is available.
 
 ### Portfolio
+- Calculator with three fixed inputs (USD, EUR, TRY) and one **extra currency** you choose from the full list (default HUF, e.g. switch it to SEK or RON). The choice is remembered. The output currency can be any supported currency.
+- The calculation goes through TRY: every amount is converted to TRY with its current TRY rate and the total is divided by the TRY rate of the output currency. All rates are derived from a single USD table, so this equals the direct cross rate. If an amount has no available rate, the result names the missing rate instead of silently counting it as zero.
 - Track saved currency purchases separately from the currency converter.
 - Repeated purchases of the same currency are merged using weighted-average acquisition cost.
 - Double-click a saved row to edit its total quantity and average acquisition cost.
@@ -40,6 +43,7 @@ A lightweight Windows desktop application for currency conversion and personal p
 - Import and export portfolio records using Excel.
 
 ### Metals
+- The calculator output can be shown in any supported currency (TRY, USD, EUR, SEK, RON, ...), in the same order as every other currency list.
 - Track gold and silver purchases by gram.
 - Repeated purchases of the same metal are merged using weighted-average acquisition cost.
 - Double-click a saved row to edit its total quantity and average acquisition cost.
@@ -93,7 +97,8 @@ Metal valuation uses the application's spot-price feed converted to TRY per gram
 
 ## Application behavior and appearance
 
-- Dark, light, and manually selectable blue themes. The initial light/dark choice follows the Windows appearance preference when available.
+- **Language:** full Turkish or full English interface, chosen in Settings (Türkçe / English). Texts, messages, the built-in guide, Excel exports and currency names follow the chosen language. Excel import understands headers and sheet names in both languages, so a file exported in one language can be imported in the other. The change applies after a restart; Settings offers to restart immediately.
+- Five themes: Light, Dark, Blue and the new **Midnight** (true black with a cyan accent, AMOLED friendly) and **Emerald** (deep green). The automatic option follows the Windows appearance preference when available. The new palettes are checked against WCAG AA text contrast in the test suite.
 - Application icon included in the Windows build.
 - Tables allow users to resize columns.
 - Close-to-system-tray behavior can be selected and remembered from Settings. The tray menu can restore the main window or exit the application.
@@ -189,6 +194,16 @@ Packaging tools are listed in `requirements-build.txt` (it includes `requirement
 ---
 
 ## Version history
+
+### 2.5.0
+- **Language switch:** complete Turkish and English interface selectable in Settings (previously part of the interface was English-only), including messages, dialogs, the user guide, Excel exports, currency and metal names. Excel import accepts both languages.
+- **Romanian leu (RON)** and eight more currencies (UAH, RSD, GEL, AZN, EGP, ILS, MYR, KZT) added; 39 foreign currencies are supported.
+- **Calculator:** USD, EUR and TRY stay fixed; the fourth input is now a freely chosen currency (default HUF) whose choice is remembered, so any supported currency can be entered, not only displayed. A missing exchange rate is reported instead of being counted as zero.
+- **One currency order everywhere** (global FX-turnover ranking, BIS 2025) in every drop-down, the currency chooser and the holdings table.
+- **Metals output** can be shown in every supported currency instead of only TRY/USD/EUR.
+- Two new themes: **Midnight** and **Emerald**.
+- Standard dialog buttons (Yes/No/Save/Cancel) follow the application language instead of the operating-system language.
+- Default profile names ("Profil 1" / "Profile 1") follow the language; saved holdings are relabelled when the language changes.
 
 ### 2.4.1
 - New **Windows ile başlat** option: asked once on the first run of the packaged EXE and available in **Ayarlar**; optionally starts in the system tray. A failed first refresh right after sign-in is retried automatically.

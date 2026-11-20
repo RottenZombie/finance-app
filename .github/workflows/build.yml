@@ -1,4 +1,4 @@
-name: FinanceTerminal 2.4.1 - Windows EXE
+name: FinanceTerminal 2.5.0 - Windows EXE
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build FinanceTerminal 2.4.1 Windows x64
+    name: Build FinanceTerminal 2.5.0 Windows x64
     runs-on: windows-latest
 
     steps:
@@ -36,7 +36,7 @@ jobs:
       - name: Verify application imports
         shell: pwsh
         run: |
-          python -c "from ui.main_window import MainWindow; from features.bist.portfolio_tab import BistPortfolioTab; from features.investment_store import InvestmentStore; from features.investment_panel import InvestmentPanel; from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker; from core.single_instance import SingleInstance; from core.app_paths import app_data_directory, settings_file_path; from core.version import APP_VERSION; from features.bist.quotes import QuoteService; from core.market_refresh import collect_market_snapshot; from core.log_setup import setup_logging; print('FinanceTerminal imports OK')"
+          python -c "from ui.main_window import MainWindow; from features.bist.portfolio_tab import BistPortfolioTab; from features.investment_store import InvestmentStore; from features.investment_panel import InvestmentPanel; from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker; from core.single_instance import SingleInstance; from core.app_paths import app_data_directory, settings_file_path; from core.version import APP_VERSION; from features.bist.quotes import QuoteService; from core.market_refresh import collect_market_snapshot; from core.log_setup import setup_logging; from core.i18n import tr; from core.help_text import help_html; from core.restart import restart_command; from ui.themes import EXTRA_THEMES; from features.dialogs import ask_question; from features.currencies import CURRENCY_RANKING; print('FinanceTerminal imports OK')"
 
       - name: Run tests
         env:
@@ -65,7 +65,7 @@ jobs:
         run: |
           @"
           Application: FinanceTerminal
-          Application version: 2.4.1
+          Application version: 2.5.0
           Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
           BIST AI: included
@@ -102,12 +102,16 @@ jobs:
           Excel export with profit/loss and sample-template download: included
           Summary warning for shares without a price: included
           Start with Windows option (Ayarlar) with optional tray start: included
+          Full Turkish / English interface (Settings > Language): included
+          Romanian leu and 8 more currencies, one global currency order: included
+          Calculator with a changeable extra currency; metals output in every currency: included
+          Midnight and Emerald themes: included
           "@ | Set-Content -Path dist/build-info.txt -Encoding UTF8
 
       - name: Upload versioned EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FinanceTerminal-2.4.1-Windows-x64
+          name: FinanceTerminal-2.5.0-Windows-x64
           path: |
             dist/FinanceTerminal.exe
             dist/build-info.txt

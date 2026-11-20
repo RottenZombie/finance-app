@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtWidgets import QFileDialog, QMessageBox
+from core.i18n import tr
 
 EXPORT = "export"
 TEMPLATE = "template"
@@ -14,16 +15,14 @@ def ask_export_mode(parent, section_title: str) -> str | None:
     """Return EXPORT, TEMPLATE or None (cancelled)."""
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Question)
-    box.setWindowTitle("Excel'e Aktar")
-    box.setText(f"{section_title} için ne yapmak istersiniz?")
+    box.setWindowTitle(tr("Excel'e Aktar"))
+    box.setText(tr("{0} için ne yapmak istersiniz?").format(section_title))
     box.setInformativeText(
-        "Verilerimi Aktar: kayıtlarınız ve dışa aktarma anındaki fiyat / kâr-zarar değerleri.\n"
-        "Örnek Şablon İndir: aynı düzende, her sayfada tek örnek satır içeren dosya. "
-        "Örneği kendi verinizle değiştirip içe aktarabilirsiniz."
+        tr("Verilerimi Aktar: kayıtlarınız ve dışa aktarma anındaki fiyat / kâr-zarar değerleri.\nÖrnek Şablon İndir: aynı düzende, her sayfada tek örnek satır içeren dosya. Örneği kendi verinizle değiştirip içe aktarabilirsiniz.")
     )
-    export_button = box.addButton("Verilerimi Aktar", QMessageBox.ButtonRole.AcceptRole)
-    template_button = box.addButton("Örnek Şablon İndir", QMessageBox.ButtonRole.ActionRole)
-    cancel_button = box.addButton("İptal", QMessageBox.ButtonRole.RejectRole)
+    export_button = box.addButton(tr("Verilerimi Aktar"), QMessageBox.ButtonRole.AcceptRole)
+    template_button = box.addButton(tr("Örnek Şablon İndir"), QMessageBox.ButtonRole.ActionRole)
+    cancel_button = box.addButton(tr("İptal"), QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(export_button)
     box.setEscapeButton(cancel_button)
     box.exec()
@@ -37,7 +36,7 @@ def ask_export_mode(parent, section_title: str) -> str | None:
 
 def ask_save_xlsx(parent, caption: str, default_name: str) -> str | None:
     path, _ = QFileDialog.getSaveFileName(
-        parent, caption, str(Path.home() / default_name), "Excel dosyaları (*.xlsx)"
+        parent, caption, str(Path.home() / default_name), tr("Excel dosyaları (*.xlsx)")
     )
     if not path:
         return None
@@ -54,12 +53,11 @@ def run_template_export(
     try:
         writer(path)
     except Exception as exc:
-        QMessageBox.warning(parent, "Şablon kaydedilemedi", str(exc))
+        QMessageBox.warning(parent, tr("Şablon kaydedilemedi"), str(exc))
         return False
     QMessageBox.information(
         parent,
-        "Örnek şablon kaydedildi",
-        f"Dosya kaydedildi:\n{path}\n\n"
-        "Örnek satırı kendi verinizle değiştirip \"Excel'den İçe Aktar\" ile yükleyebilirsiniz.",
+        tr("Örnek şablon kaydedildi"),
+        tr("Dosya kaydedildi:\n{0}\n\nÖrnek satırı kendi verinizle değiştirip \"Excel'den İçe Aktar\" ile yükleyebilirsiniz.").format(path),
     )
     return True

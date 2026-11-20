@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
+from core.i18n import tr
 
 
-def parse_localized_decimal(value: object, *, field_name: str = "Değer") -> Decimal:
+def parse_localized_decimal(value: object, *, field_name: str = tr("Değer")) -> Decimal:
     """Parse common Turkish/English numeric formats into Decimal.
 
     Examples:
@@ -16,11 +17,11 @@ def parse_localized_decimal(value: object, *, field_name: str = "Değer") -> Dec
     if isinstance(value, Decimal):
         number = value
     elif value is None:
-        raise ValueError(f"{field_name} boş bırakılamaz.")
+        raise ValueError(tr("{0} boş bırakılamaz.").format(field_name))
     else:
         raw = str(value).strip()
         if not raw:
-            raise ValueError(f"{field_name} boş bırakılamaz.")
+            raise ValueError(tr("{0} boş bırakılamaz.").format(field_name))
 
         negative = raw.startswith("(") and raw.endswith(")")
         if negative:
@@ -47,14 +48,14 @@ def parse_localized_decimal(value: object, *, field_name: str = "Değer") -> Dec
 
         # Reject unexpected symbols instead of silently producing a wrong amount.
         if not re.fullmatch(r"[+-]?\d+(?:\.\d+)?", raw):
-            raise ValueError(f"{field_name} geçerli bir sayı değil: {value}")
+            raise ValueError(tr("{0} geçerli bir sayı değil: {1}").format(field_name, value))
         try:
             number = Decimal(raw)
         except InvalidOperation as exc:
-            raise ValueError(f"{field_name} geçerli bir sayı değil: {value}") from exc
+            raise ValueError(tr("{0} geçerli bir sayı değil: {1}").format(field_name, value)) from exc
 
     if not number.is_finite():
-        raise ValueError(f"{field_name} sonlu bir sayı olmalı.")
+        raise ValueError(tr("{0} sonlu bir sayı olmalı.").format(field_name))
     return number
 
 
@@ -65,7 +66,7 @@ def normalize_symbol(value: object) -> str:
     if symbol.endswith(".IS"):
         symbol = symbol[:-3]
     if not re.fullmatch(r"[A-Z0-9]{2,12}", symbol):
-        raise ValueError("Hisse kodu 2–12 karakterli harf/rakam içermelidir.")
+        raise ValueError(tr("Hisse kodu 2–12 karakterli harf/rakam içermelidir."))
     return symbol
 
 

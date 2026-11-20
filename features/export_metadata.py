@@ -7,6 +7,7 @@ import unicodedata
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from core.i18n import tr
 
 CURRENCY_SOURCE_URL = "https://www.exchangerate-api.com/"
 GOLD_SOURCE_URL = "https://gold-api.com/"
@@ -38,22 +39,22 @@ def add_export_metadata_sheet(
     profile_name: str | None = None,
 ) -> None:
     """Append a human-readable provenance sheet without changing import headers."""
-    sheet = workbook.create_sheet("Veri Bilgisi")
-    sheet.append(["FinanceTerminal | Dışa Aktarım Bilgileri", ""])
-    sheet.append(["Excel oluşturulma zamanı", local_timestamp()])
-    sheet.append(["Uygulamada son veri güncelleme zamanı", rates_updated_at or "Bilinmiyor"])
-    sheet.append(["Döviz veri bağlantı durumu", rates_status or "Bilinmiyor"])
-    sheet.append(["Döviz kuru kaynağı", "ExchangeRate-API | USD bazlı TRY, EUR ve HUF kurları (ulaşılamazsa yedek: TCMB günlük kurları)"])
-    sheet.append(["Döviz sağlayıcı sitesi", CURRENCY_SOURCE_URL])
-    sheet.append(["Altın fiyat kaynağı", "Gold API | XAU (USD / troy ons)"])
-    sheet.append(["Altın sağlayıcı sitesi", GOLD_SOURCE_URL])
-    sheet.append(["Gümüş fiyat kaynağı", "Gold API | XAG (USD / troy ons)"])
-    sheet.append(["Gümüş sağlayıcı sitesi", SILVER_SOURCE_URL])
+    sheet = workbook.create_sheet(tr("Veri Bilgisi"))
+    sheet.append([tr("FinanceTerminal | Dışa Aktarım Bilgileri"), ""])
+    sheet.append([tr("Excel oluşturulma zamanı"), local_timestamp()])
+    sheet.append([tr("Uygulamada son veri güncelleme zamanı"), rates_updated_at or "Bilinmiyor"])
+    sheet.append([tr("Döviz veri bağlantı durumu"), rates_status or "Bilinmiyor"])
+    sheet.append([tr("Döviz kuru kaynağı"), tr("ExchangeRate-API | USD bazlı TRY, EUR ve HUF kurları (ulaşılamazsa yedek: TCMB günlük kurları)")])
+    sheet.append([tr("Döviz sağlayıcı sitesi"), CURRENCY_SOURCE_URL])
+    sheet.append([tr("Altın fiyat kaynağı"), tr("Gold API | XAU (USD / troy ons)")])
+    sheet.append([tr("Altın sağlayıcı sitesi"), GOLD_SOURCE_URL])
+    sheet.append([tr("Gümüş fiyat kaynağı"), tr("Gold API | XAG (USD / troy ons)")])
+    sheet.append([tr("Gümüş sağlayıcı sitesi"), SILVER_SOURCE_URL])
     if include_bist_note:
-        sheet.append(["Hisse fiyat bilgisi", "BIST hisse fiyatları gecikmeli ve resmi olmayan kaynaklardan (Yahoo Finance, yedek: İş Yatırım) alınır. Fiyatı alınamayan hisseler kayıtlı alış maliyetiyle gösterilir ve kâr/zarara dahil edilmez."])
-    sheet.append(["Not", "Fiyatlar dışa aktarım sırasında uygulamada bulunan son veri değerleridir; bu dosya fiyat geçmişi oluşturmaz."])
+        sheet.append([tr("Hisse fiyat bilgisi"), tr("BIST hisse fiyatları gecikmeli ve resmi olmayan kaynaklardan (Yahoo Finance, yedek: İş Yatırım) alınır. Fiyatı alınamayan hisseler kayıtlı alış maliyetiyle gösterilir ve kâr/zarara dahil edilmez.")])
+    sheet.append(["Not", tr("Fiyatlar dışa aktarım sırasında uygulamada bulunan son veri değerleridir; bu dosya fiyat geçmişi oluşturmaz.")])
     if profile_name:
-        sheet.append(["Bu dosyanın ait olduğu profil", profile_name])
+        sheet.append([tr("Bu dosyanın ait olduğu profil"), profile_name])
 
     sheet.merge_cells("A1:B1")
     sheet["A1"].font = Font(size=15, bold=True, color="FFFFFF")

@@ -14,6 +14,7 @@ from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+from core.i18n import tr
 
 
 GITHUB_OWNER = "RottenZombie"
@@ -49,7 +50,7 @@ def _version_tuple(value: str) -> tuple[int, int, int]:
         re.IGNORECASE,
     )
     if not match:
-        raise UpdateError(f"Geçersiz sürüm numarası: {value}")
+        raise UpdateError(tr("Geçersiz sürüm numarası: {0}").format(value))
     return tuple(int(part) for part in match.groups())
 
 
@@ -60,20 +61,20 @@ def is_newer_version(current_version: str, latest_version: str) -> bool:
 
 def parse_release_payload(payload: dict, current_version: str) -> ReleaseInfo | None:
     if not isinstance(payload, dict):
-        raise UpdateError("GitHub sürüm yanıtı beklenen biçimde değil.")
+        raise UpdateError(tr("GitHub sürüm yanıtı beklenen biçimde değil."))
     if payload.get("draft") or payload.get("prerelease"):
         return None
 
     tag_name = str(payload.get("tag_name") or "").strip()
     version = tag_name.lstrip("vV")
     if not version:
-        raise UpdateError("GitHub sürüm etiketi bulunamadı.")
+        raise UpdateError(tr("GitHub sürüm etiketi bulunamadı."))
     if not is_newer_version(current_version, version):
         return None
 
     assets = payload.get("assets")
     if not isinstance(assets, list):
-        raise UpdateError("GitHub sürümünde indirilebilir dosya listesi bulunamadı.")
+        raise UpdateError(tr("GitHub sürümünde indirilebilir dosya listesi bulunamadı."))
 
     asset = next(
         (item for item in assets if isinstance(item, dict)
@@ -82,7 +83,7 @@ def parse_release_payload(payload: dict, current_version: str) -> ReleaseInfo | 
     )
     if asset is None:
         raise UpdateError(
-            f"Yeni sürüm {version} bulundu ancak {EXPECTED_ASSET_NAME} dosyası eklenmemiş."
+            tr("Yeni sürüm {0} bulundu ancak {1} dosyası eklenmemiş.").format(version, EXPECTED_ASSET_NAME)
         )
 
     download_url = str(asset.get("browser_download_url") or "")
@@ -93,14 +94,14 @@ def parse_release_payload(payload: dict, current_version: str) -> ReleaseInfo | 
         or parsed_url.hostname != "github.com"
         or not parsed_url.path.startswith(expected_download_prefix)
     ):
-        raise UpdateError("Güncelleme bağlantısı beklenen GitHub depo adresinden gelmiyor.")
+        raise UpdateError(tr("Güncelleme bağlantısı beklenen GitHub depo adresinden gelmiyor."))
 
     try:
         asset_size = int(asset.get("size", 0))
     except (TypeError, ValueError):
         asset_size = 0
     if asset_size < 1024 or asset_size > MAX_DOWNLOAD_BYTES:
-        raise UpdateError("Güncelleme dosyasının boyutu geçerli aralıkta değil.")
+        raise UpdateError(tr("Güncelleme dosyasının boyutu geçerli aralıkta değil."))
 
     digest = asset.get("digest")
     if isinstance(digest, str) and digest.lower().startswith("sha256:"):
@@ -144,11 +145,11 @@ def check_latest_release(current_version: str, timeout: int = 12) -> ReleaseInfo
         with urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
-        raise UpdateError(f"GitHub güncelleme kontrolü başarısız (HTTP {exc.code}).") from exc
+        raise UpdateError(tr("GitHub güncelleme kontrolü başarısız (HTTP {0}).").format(exc.code)) from exc
     except (URLError, TimeoutError, OSError) as exc:
-        raise UpdateError("Güncelleme sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edin.") from exc
+        raise UpdateError(tr("Güncelleme sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edin.")) from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise UpdateError("GitHub'dan gelen sürüm bilgisi okunamadı.") from exc
+        raise UpdateError(tr("GitHub'dan gelen sürüm bilgisi okunamadı.")) from exc
     return parse_release_payload(payload, current_version)
 
 
@@ -164,8 +165,7 @@ def download_release_asset(
     """
     if not info.digest:
         raise UpdateError(
-            "Bu sürümde SHA-256 özeti bulunmadığı için dosya doğrulanamadı ve otomatik "
-            "kurulum yapılmadı. Güncellemeyi GitHub sürüm sayfasından elle indirebilirsiniz."
+            tr("Bu sürümde SHA-256 özeti bulunmadığı için dosya doğrulanamadı ve otomatik kurulum yapılmadı. Güncellemeyi GitHub sürüm sayfasından elle indirebilirsiniz.")
         )
     request = Request(
         info.download_url,
@@ -187,7 +187,7 @@ def download_release_asset(
                         break
                     total += len(chunk)
                     if total > MAX_DOWNLOAD_BYTES or total > info.asset_size:
-                        raise UpdateError("İndirilen dosya beklenen boyutu aşıyor.")
+                        raise UpdateError(tr("İndirilen dosya beklenen boyutu aşıyor."))
                     digest.update(chunk)
                     output.write(chunk)
                     if progress_callback is not None:
@@ -198,13 +198,13 @@ def download_release_asset(
 
         if total != info.asset_size:
             raise UpdateError(
-                f"İndirilen dosyanın boyutu uyuşmuyor (beklenen {info.asset_size}, gelen {total})."
+                tr("İndirilen dosyanın boyutu uyuşmuyor (beklenen {0}, gelen {1}).").format(info.asset_size, total)
             )
         with temp_path.open("rb") as downloaded:
             if downloaded.read(2) != b"MZ":
-                raise UpdateError("İndirilen dosya geçerli bir Windows EXE dosyası değil.")
+                raise UpdateError(tr("İndirilen dosya geçerli bir Windows EXE dosyası değil."))
         if digest.hexdigest().lower() != info.digest.lower():
-            raise UpdateError("İndirilen dosyanın SHA-256 doğrulaması başarısız.")
+            raise UpdateError(tr("İndirilen dosyanın SHA-256 doğrulaması başarısız."))
         if progress_callback is not None:
             elapsed = max(time.monotonic() - started_at, 0.001)
             progress_callback(total, info.asset_size, total / elapsed)
@@ -219,10 +219,10 @@ def download_release_asset(
 
 def current_executable_path() -> Path:
     if not getattr(sys, "frozen", False):
-        raise UpdateError("Otomatik kurulum yalnızca yayımlanmış Windows EXE sürümünde kullanılabilir.")
+        raise UpdateError(tr("Otomatik kurulum yalnızca yayımlanmış Windows EXE sürümünde kullanılabilir."))
     executable = Path(sys.executable).resolve()
     if executable.suffix.lower() != ".exe" or not executable.is_file():
-        raise UpdateError("Çalışan FinanceTerminal.exe yolu belirlenemedi.")
+        raise UpdateError(tr("Çalışan FinanceTerminal.exe yolu belirlenemedi."))
     return executable
 
 
@@ -234,8 +234,7 @@ def ensure_install_directory_writable(executable: Path) -> None:
         Path(probe).unlink(missing_ok=True)
     except OSError as exc:
         raise UpdateError(
-            "Uygulamanın bulunduğu klasöre yazma izni yok. EXE'yi yazma izniniz olan "
-            "bir klasöre taşıyın veya güncellemeyi GitHub'dan elle indirin."
+            tr("Uygulamanın bulunduğu klasöre yazma izni yok. EXE'yi yazma izniniz olan bir klasöre taşıyın veya güncellemeyi GitHub'dan elle indirin.")
         ) from exc
 
 
@@ -250,7 +249,7 @@ def launch_windows_update_helper(
     Waiting for only os.getpid() can leave the parent holding the EXE open.
     """
     if os.name != "nt":
-        raise UpdateError("Otomatik EXE değiştirme yalnızca Windows'ta kullanılabilir.")
+        raise UpdateError(tr("Otomatik EXE değiştirme yalnızca Windows'ta kullanılabilir."))
     ensure_install_directory_writable(executable)
 
     def ps_quote(value: str) -> str:
@@ -433,11 +432,11 @@ Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction Silent
         )
     except OSError as exc:
         write_launcher_log(
-            f"PowerShell yardımcısı başlatılamadı: {exc}"
+            tr("PowerShell yardımcısı başlatılamadı: {0}").format(exc)
         )
         script_path.unlink(missing_ok=True)
         raise UpdateError(
-            f"Güncelleme yardımcısı başlatılamadı: {exc}"
+            tr("Güncelleme yardımcısı başlatılamadı: {0}").format(exc)
         ) from exc
 
     write_launcher_log(
@@ -452,6 +451,5 @@ Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction Silent
             f"PowerShell yardımcısı erken kapandı. Çıkış kodu: {exit_code}"
         )
         raise UpdateError(
-            "Güncelleme yardımcısı başlatıldı ancak hemen kapandı. "
-            f"Ayrıntılı günlük: {log_path}"
+            tr("Güncelleme yardımcısı başlatıldı ancak hemen kapandı. Ayrıntılı günlük: {0}").format(log_path)
         )

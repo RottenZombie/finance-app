@@ -10,6 +10,7 @@ from typing import Any
 
 from .utils import normalize_symbol, parse_localized_decimal
 from core.app_paths import data_directory
+from core.i18n import tr
 
 
 def default_database_path() -> Path:
@@ -72,11 +73,11 @@ class BistDatabase:
     ) -> dict[str, Any]:
         ticker = normalize_symbol(symbol)
         qty = parse_localized_decimal(quantity, field_name="Adet")
-        cost = parse_localized_decimal(average_cost, field_name="Ortalama maliyet")
+        cost = parse_localized_decimal(average_cost, field_name=tr("Ortalama maliyet"))
         if qty <= 0:
-            raise ValueError("Adet sıfırdan büyük olmalıdır.")
+            raise ValueError(tr("Adet sıfırdan büyük olmalıdır."))
         if cost < 0:
-            raise ValueError("Ortalama maliyet negatif olamaz.")
+            raise ValueError(tr("Ortalama maliyet negatif olamaz."))
 
         company_text = str(company or "").strip() or ticker
         sector_text = str(sector or "").strip()
@@ -129,11 +130,11 @@ class BistDatabase:
         old_ticker = normalize_symbol(original_symbol)
         new_ticker = normalize_symbol(symbol)
         qty = parse_localized_decimal(quantity, field_name="Adet")
-        cost = parse_localized_decimal(average_cost, field_name="Ortalama maliyet")
+        cost = parse_localized_decimal(average_cost, field_name=tr("Ortalama maliyet"))
         if qty <= 0:
-            raise ValueError("Adet sıfırdan büyük olmalıdır.")
+            raise ValueError(tr("Adet sıfırdan büyük olmalıdır."))
         if cost < 0:
-            raise ValueError("Ortalama maliyet negatif olamaz.")
+            raise ValueError(tr("Ortalama maliyet negatif olamaz."))
 
         company_text = str(company or "").strip() or new_ticker
         sector_text = str(sector or "").strip()
@@ -145,7 +146,7 @@ class BistDatabase:
                 "SELECT symbol FROM bist_holdings WHERE symbol = ?", (old_ticker,)
             ).fetchone()
             if existing is None:
-                raise ValueError(f"Düzenlenecek kayıt bulunamadı: {old_ticker}")
+                raise ValueError(tr("Düzenlenecek kayıt bulunamadı: {0}").format(old_ticker))
 
             if new_ticker != old_ticker:
                 collision = conn.execute(
@@ -153,8 +154,7 @@ class BistDatabase:
                 ).fetchone()
                 if collision is not None:
                     raise ValueError(
-                        f"{new_ticker} koduyla başka bir kayıt zaten mevcut. "
-                        "Mevcut kaydı ezmemek için değişiklik yapılmadı."
+                        tr("{0} koduyla başka bir kayıt zaten mevcut. Mevcut kaydı ezmemek için değişiklik yapılmadı.").format(new_ticker)
                     )
 
             conn.execute(
@@ -231,5 +231,5 @@ class BistDatabase:
                 )
                 imported += 1
             except Exception as exc:
-                errors.append(f"Satır {row_number}: {exc}")
+                errors.append(tr("Satır {0}: {1}").format(row_number, exc))
         return imported, errors

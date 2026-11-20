@@ -21,7 +21,10 @@ from features.summary import SummaryPage
 from features.bist.portfolio_tab import BistPortfolioTab
 from features.bist.database import BistDatabase
 from features.investment_store import InvestmentStore, format_localized
-from features.currencies import CURRENCY_INFO, DEFAULT_CURRENCY_CODES, currency_display_name
+from features.currencies import (
+    CURRENCY_INFO, DEFAULT_CURRENCY_CODES, DEFAULT_EXTRA_CURRENCY, currency_display_name,
+    sort_currency_codes,
+)
 from features.investment_excel import write_combined_portfolio_excel
 from features.export_dialog import EXPORT, TEMPLATE, ask_export_mode, run_template_export
 from features.export_templates import write_combined_template
@@ -33,6 +36,8 @@ from features.combined_import import (
 from core.resources import resource_path
 from core.version import APP_VERSION
 from core import autostart
+from core.help_text import help_html
+from ui.themes import EXTRA_THEMES, build_stylesheet
 from core.app_paths import (
     set_active_profile, migrate_legacy_data_to_profile1, app_data_directory, profile_directory,
 )
@@ -41,6 +46,8 @@ from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker
 from core.updater import (
     UpdateError, current_executable_path, launch_windows_update_helper,
 )
+from core.i18n import get_language, normalize_language, tr, tr_noop, translate
+from features.dialogs import ask_question, ask_warning_question, localize_dialog_buttons, localize_message_buttons
 
 
 class MainWindow(QWidget):
@@ -94,7 +101,7 @@ class MainWindow(QWidget):
         self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.summary_page = SummaryPage()
-        self.tabs.addTab(self.summary_page, "Summary")
+        self.tabs.addTab(self.summary_page, tr("Özet"))
 
         # ---------------- CURRENCY ----------------
         self.tab1 = QWidget()
@@ -114,14 +121,15 @@ class MainWindow(QWidget):
         self.refresh_currency_cards()
 
         self.mode = QComboBox()
-        self.mode.addItems(["Normal", "Ters"])
+        self.mode.addItem(tr("Normal"), "normal")
+        self.mode.addItem(tr("Ters"), "reverse")
         self.mode.currentIndexChanged.connect(self.refresh)
 
         self.last = QLabel("-")
-        self.currency_settings_button = QPushButton("Görüntülenecek Para Birimlerini Seç")
+        self.currency_settings_button = QPushButton(tr("Görüntülenecek Para Birimlerini Seç"))
         self.currency_settings_button.clicked.connect(self.open_currency_settings)
 
-        self.update_button = QPushButton("Güncelle")
+        self.update_button = QPushButton(tr("Güncelle"))
         self.update_button.clicked.connect(self.update)
 
         l1.addWidget(self.currency_cards_scroll)
@@ -132,17 +140,20 @@ class MainWindow(QWidget):
         l1.addStretch()
 
         # ---------------- OTHER TABS ----------------
-        self.portfolio = Portfolio()
+        self.portfolio = Portfolio(
+            extra_currency=str(self.settings.get("calculator_extra_currency", DEFAULT_EXTRA_CURRENCY))
+        )
+        self.portfolio.extra_currency_changed.connect(self._save_extra_currency)
         self.metals = Metals()
         self.bist_portfolio = BistPortfolioTab()
         self.bist_portfolio.storage_label.setText(
-            f"Veriler bu bilgisayarda saklanır · {self.profile_names[self.settings['active_profile']]}"
+            tr("Veriler bu bilgisayarda saklanır · {0}").format(self.profile_names[self.settings['active_profile']])
         )
 
-        self.tabs.addTab(self.tab1, "Currency")
-        self.tabs.addTab(self.portfolio, "Portfolio")
-        self.tabs.addTab(self.metals, "Metals")
-        self.tabs.addTab(self.bist_portfolio, "BIST AI")
+        self.tabs.addTab(self.tab1, tr("Döviz"))
+        self.tabs.addTab(self.portfolio, tr("Portföy"))
+        self.tabs.addTab(self.metals, tr("Metaller"))
+        self.tabs.addTab(self.bist_portfolio, tr("BIST AI"))
 
         self.portfolio.investment_panel.portfolio_changed.connect(self.refresh_summary)
         self.metals.investment_panel.portfolio_changed.connect(self.refresh_summary)
@@ -157,25 +168,25 @@ class MainWindow(QWidget):
 
         layout = QVBoxLayout(self)
         toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("Profil:"))
+        toolbar.addWidget(QLabel(tr("Profil:")))
         self.profile_selector = QComboBox()
         self.profile_selector.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self._refresh_profile_selector()
         self.profile_selector.currentIndexChanged.connect(self.switch_profile)
         toolbar.addWidget(self.profile_selector)
-        self.rename_profile_button = QPushButton("Profil Adını Değiştir")
+        self.rename_profile_button = QPushButton(tr("Profil Adını Değiştir"))
         self.rename_profile_button.clicked.connect(self.rename_current_profile)
         toolbar.addWidget(self.rename_profile_button)
         toolbar.addStretch(1)
-        self.import_all_button = QPushButton("Tüm Portföyü Excel'den İçe Aktar")
+        self.import_all_button = QPushButton(tr("Tüm Portföyü Excel'den İçe Aktar"))
         self.import_all_button.clicked.connect(self.import_complete_portfolio)
         toolbar.addWidget(self.import_all_button)
-        self.export_all_button = QPushButton("Tüm Portföyü Excel'e Aktar")
+        self.export_all_button = QPushButton(tr("Tüm Portföyü Excel'e Aktar"))
         self.export_all_button.clicked.connect(self.export_complete_portfolio)
         toolbar.addWidget(self.export_all_button)
-        self.settings_button = QPushButton("Ayarlar ⚙️")
+        self.settings_button = QPushButton(tr("Ayarlar ⚙️"))
         self.settings_button.setObjectName("globalSettingsButton")
-        self.settings_button.setToolTip("Uygulama ayarlarını aç")
+        self.settings_button.setToolTip(tr("Uygulama ayarlarını aç"))
         self.settings_button.clicked.connect(self.open_settings)
         toolbar.addWidget(self.settings_button)
         layout.addLayout(toolbar)
@@ -189,17 +200,25 @@ class MainWindow(QWidget):
 
 
     # ---------------- PROFILE MANAGEMENT ----------------
+    @staticmethod
+    def _profile_name(stored, number: int) -> str:
+        """A profile still carrying a default name follows the current language."""
+        defaults = {f"Profil {number}", f"Profile {number}"}
+        name = str(stored or "").strip()
+        markers = {1: tr_noop("Profil 1"), 2: tr_noop("Profil 2"), 3: tr_noop("Profil 3")}
+        return tr(markers[number]) if (not name or name in defaults) else name
+
     def _initialize_profile_settings(self) -> None:
         names = self.settings.get("profile_names")
         if not isinstance(names, dict):
             names = {}
         self.profile_names = {
-            "profile1": str(names.get("profile1") or "Profil 1"),
-            "profile2": str(names.get("profile2") or "Profil 2"),
+            "profile1": self._profile_name(names.get("profile1"), 1),
+            "profile2": self._profile_name(names.get("profile2"), 2),
         }
         # Profile 3 is opt-in and appears only after the user selects "Profil Ekle".
         if names.get("profile3"):
-            self.profile_names["profile3"] = str(names.get("profile3"))
+            self.profile_names["profile3"] = self._profile_name(names.get("profile3"), 3)
         active = str(self.settings.get("active_profile", "profile1")).lower()
         if active not in self.profile_names:
             active = "profile1"
@@ -214,18 +233,21 @@ class MainWindow(QWidget):
             if not migrate_legacy_data_to_profile1():
                 QMessageBox.warning(
                     self,
-                    "Eski portföy verileri kopyalanamadı",
-                    "Önceki sürümün veri klasörü değiştirilmedi. FinanceTerminal eski "
-                    "verilerinizi otomatik olarak Profile 1'e kopyalayamadı. "
-                    "Uygulamayı kapatın ve yedek klasörünüzü koruyun.",
+                    tr("Eski portföy verileri kopyalanamadı"),
+                    tr("Önceki sürümün veri klasörü değiştirilmedi. FinanceTerminal eski verilerinizi otomatik olarak Profile 1'e kopyalayamadı. Uygulamayı kapatın ve yedek klasörünüzü koruyun."),
                 )
         set_active_profile(active)
 
         configured = self.settings.get("currency_codes", DEFAULT_CURRENCY_CODES)
         if not isinstance(configured, list):
             configured = DEFAULT_CURRENCY_CODES
-        selected = [code for code in configured if code in CURRENCY_INFO]
+        selected = sort_currency_codes(code for code in configured if code in CURRENCY_INFO)
         self.settings["currency_codes"] = selected or DEFAULT_CURRENCY_CODES.copy()
+        save(self.settings)
+
+    def _save_extra_currency(self, code: str) -> None:
+        """Remember the calculator's freely chosen extra currency."""
+        self.settings["calculator_extra_currency"] = str(code)
         save(self.settings)
 
     def _refresh_profile_selector(self) -> None:
@@ -245,7 +267,7 @@ class MainWindow(QWidget):
 
         # Keep the add action visible even at the limit so the user gets an
         # explicit explanation instead of silently losing the option.
-        self.profile_selector.addItem("＋ Profil Ekle", "__add_profile__")
+        self.profile_selector.addItem(tr("＋ Profil Ekle"), "__add_profile__")
         active_index = self.profile_selector.findData(self.settings.get("active_profile"))
         self.profile_selector.setCurrentIndex(active_index if active_index >= 0 else 0)
 
@@ -269,20 +291,20 @@ class MainWindow(QWidget):
         if "profile3" in self.profile_names:
             QMessageBox.information(
                 self,
-                "Maksimum profil sayısı",
-                "Maksimum profil limitine ulaşılmıştır. Ekstra profil için GitHub üzerinden Issue açınız.",
+                tr("Maksimum profil sayısı"),
+                tr("Maksimum profil limitine ulaşılmıştır. Ekstra profil için GitHub üzerinden Issue açınız."),
             )
             self._refresh_profile_selector()
             return
 
-        self.profile_names["profile3"] = "Profil 3"
+        self.profile_names["profile3"] = tr("Profil 3")
         self.settings["profile_names"] = self.profile_names
         try:
             save(self.settings)
         except Exception as exc:
             self.profile_names.pop("profile3", None)
             self.settings["profile_names"] = self.profile_names
-            QMessageBox.warning(self, "Profil oluşturulamadı", str(exc))
+            QMessageBox.warning(self, tr("Profil oluşturulamadı"), str(exc))
             self._refresh_profile_selector()
             return
 
@@ -323,7 +345,7 @@ class MainWindow(QWidget):
             self.settings["active_profile"] = profile_id
             save(self.settings)
             self.bist_portfolio.storage_label.setText(
-                f"Veriler bu bilgisayarda saklanır · {self.profile_names[profile_id]}"
+                tr("Veriler bu bilgisayarda saklanır · {0}").format(self.profile_names[profile_id])
             )
             self.refresh_summary()
         except Exception as exc:
@@ -339,7 +361,7 @@ class MainWindow(QWidget):
             self.portfolio.investment_panel.refresh_table()
             self.metals.investment_panel.refresh_table()
             self.bist_portfolio.refresh_table()
-            QMessageBox.critical(self, "Profil değiştirilemedi", str(exc))
+            QMessageBox.critical(self, tr("Profil değiştirilemedi"), str(exc))
             self._refresh_profile_selector()
 
     def rename_current_profile(self) -> None:
@@ -348,25 +370,25 @@ class MainWindow(QWidget):
             return
         old_name = self.profile_names[profile_id]
         dialog = QInputDialog(self)
-        dialog.setWindowTitle("Profil adını değiştir")
-        dialog.setLabelText("Yeni profil adı:")
+        dialog.setWindowTitle(tr("Profil adını değiştir"))
+        dialog.setLabelText(tr("Yeni profil adı:"))
         dialog.setInputMode(QInputDialog.InputMode.TextInput)
         dialog.setTextValue(old_name)
         dialog.setOkButtonText("Kaydet")
-        dialog.setCancelButtonText("Vazgeç")
+        dialog.setCancelButtonText(tr("Vazgeç"))
         # Do not truncate the entered value: the selector shows an ellipsis
         # after 20 visible characters, but Excel receives the full profile name.
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         new_name = str(dialog.textValue()).strip()
         if not new_name:
-            QMessageBox.warning(self, "Geçersiz ad", "Profil adı boş bırakılamaz.")
+            QMessageBox.warning(self, tr("Geçersiz ad"), tr("Profil adı boş bırakılamaz."))
             return
         if any(
             other_id != profile_id and other_name.casefold() == new_name.casefold()
             for other_id, other_name in self.profile_names.items()
         ):
-            QMessageBox.warning(self, "Profil adı kullanılıyor", "Profillerin adı aynı olamaz.")
+            QMessageBox.warning(self, tr("Profil adı kullanılıyor"), tr("Profillerin adı aynı olamaz."))
             return
         previous_name = self.profile_names[profile_id]
         self.profile_names[profile_id] = new_name
@@ -376,12 +398,12 @@ class MainWindow(QWidget):
         except Exception as exc:
             self.profile_names[profile_id] = previous_name
             self.settings["profile_names"] = self.profile_names
-            QMessageBox.warning(self, "Profil adı kaydedilemedi", str(exc))
+            QMessageBox.warning(self, tr("Profil adı kaydedilemedi"), str(exc))
             self._refresh_profile_selector()
             return
         self._refresh_profile_selector()
         self.bist_portfolio.storage_label.setText(
-            f"Veriler bu bilgisayarda saklanır · {new_name}"
+            tr("Veriler bu bilgisayarda saklanır · {0}").format(new_name)
         )
 
     # ---------------- CURRENCY DISPLAY OPTIONS ----------------
@@ -394,13 +416,13 @@ class MainWindow(QWidget):
             if widget is not None:
                 widget.deleteLater()
         self.currency_cards = {}
-        codes = [
+        codes = sort_currency_codes(
             code for code in self.settings.get("currency_codes", DEFAULT_CURRENCY_CODES)
             if code in CURRENCY_INFO
-        ] or DEFAULT_CURRENCY_CODES
+        ) or DEFAULT_CURRENCY_CODES
         for index, code in enumerate(codes):
             card = Card(f"{code}/TRY", currency_display_name(code))
-            card.title.setToolTip(CURRENCY_INFO[code][0])
+            card.title.setToolTip(currency_display_name(code))
             card.value.setText("...")
             card.apply_theme(self.theme)
             self.currency_cards[code] = card
@@ -410,24 +432,23 @@ class MainWindow(QWidget):
 
     def open_currency_settings(self) -> None:
         dlg = QDialog(self)
-        dlg.setWindowTitle("Görüntülenecek Para Birimleri")
+        dlg.setWindowTitle(tr("Görüntülenecek Para Birimleri"))
         dlg.setMinimumSize(360, 470)
         layout = QVBoxLayout(dlg)
         layout.addWidget(QLabel(
-            "Currency sekmesinde görmek istediğiniz para birimlerini seçin. "
-            "Kur sağlayıcısında bulunmayan birimlerde güncel fiyat gösterilemez."
+            tr("Döviz sekmesinde görmek istediğiniz para birimlerini seçin. Kur sağlayıcısında bulunmayan birimlerde güncel fiyat gösterilemez.")
         ))
         selection_actions = QHBoxLayout()
-        select_all_button = QPushButton("Tümünü Seç")
-        clear_selection_button = QPushButton("Seçimi Temizle")
+        select_all_button = QPushButton(tr("Tümünü Seç"))
+        clear_selection_button = QPushButton(tr("Seçimi Temizle"))
         selection_actions.addWidget(select_all_button)
         selection_actions.addWidget(clear_selection_button)
         layout.addLayout(selection_actions)
 
         listing = QListWidget(dlg)
         current = set(self.settings.get("currency_codes", DEFAULT_CURRENCY_CODES))
-        for code, (name, _unit) in CURRENCY_INFO.items():
-            item = QListWidgetItem(f"{code} — {name}")
+        for code in CURRENCY_INFO:  # already in the shared global-usage order
+            item = QListWidgetItem(f"{code} — {currency_display_name(code)}")
             item.setData(Qt.UserRole, code)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Checked if code in current else Qt.Unchecked)
@@ -444,6 +465,7 @@ class MainWindow(QWidget):
         )
         layout.addWidget(listing)
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        localize_dialog_buttons(buttons)
         buttons.accepted.connect(dlg.accept)
         buttons.rejected.connect(dlg.reject)
         layout.addWidget(buttons)
@@ -455,7 +477,7 @@ class MainWindow(QWidget):
             if listing.item(i).checkState() == Qt.Checked
         ]
         if not selected:
-            QMessageBox.warning(self, "Seçim gerekli", "En az bir para birimi seçmelisiniz.")
+            QMessageBox.warning(self, tr("Seçim gerekli"), tr("En az bir para birimi seçmelisiniz."))
             return
         self.settings["currency_codes"] = selected
         save(self.settings)
@@ -488,11 +510,11 @@ class MainWindow(QWidget):
         profile_id = str(self.settings.get("active_profile", "profile1"))
         profile_name = self.profile_names[profile_id]
         suggested_filename = profile_export_filename(profile_name, profile_id)
-        mode = ask_export_mode(self, "Tüm portföy")
+        mode = ask_export_mode(self, tr("Tüm portföy"))
         if mode == TEMPLATE:
             run_template_export(
                 self,
-                caption="Tüm portföy örnek şablonunu kaydet",
+                caption=tr("Tüm portföy örnek şablonunu kaydet"),
                 default_name="FinanceTerminal_Tum_Portfoy_Ornek_Sablon.xlsx",
                 writer=lambda target: write_combined_template(
                     target,
@@ -505,9 +527,9 @@ class MainWindow(QWidget):
             return
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Tüm portföyü tek Excel dosyasına aktar",
+            tr("Tüm portföyü tek Excel dosyasına aktar"),
             str(Path.home() / suggested_filename),
-            "Excel dosyaları (*.xlsx)",
+            tr("Excel dosyaları (*.xlsx)"),
         )
         if not path:
             return
@@ -537,20 +559,19 @@ class MainWindow(QWidget):
             )
             QMessageBox.information(
                 self,
-                "Dışa aktarma tamamlandı",
-                f"Tüm portföy tek Excel dosyasına aktarıldı:\n{path}\n\n"
-                "Summary, Döviz, Maden, Hisse Senedi ve Veri Bilgisi sayfaları oluşturuldu.",
+                tr("Dışa aktarma tamamlandı"),
+                tr("Tüm portföy tek Excel dosyasına aktarıldı:\n{0}\n\nSummary, Döviz, Maden, Hisse Senedi ve Veri Bilgisi sayfaları oluşturuldu.").format(path),
             )
         except Exception as exc:
-            QMessageBox.warning(self, "Dışa aktarma başarısız", str(exc))
+            QMessageBox.warning(self, tr("Dışa aktarma başarısız"), str(exc))
 
     # ---------------- COMBINED PORTFOLIO IMPORT ----------------
     def import_complete_portfolio(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Tüm portföyün bulunduğu Excel dosyasını seç",
+            tr("Tüm portföyün bulunduğu Excel dosyasını seç"),
             str(Path.home()),
-            "Excel dosyaları (*.xlsx)",
+            tr("Excel dosyaları (*.xlsx)"),
         )
         if not path:
             return
@@ -564,7 +585,7 @@ class MainWindow(QWidget):
                 metal_assets=metal_panel.assets,
             )
         except Exception as exc:
-            QMessageBox.warning(self, "Excel okunamadı", str(exc))
+            QMessageBox.warning(self, tr("Excel okunamadı"), str(exc))
             return
 
         currency_rows = imported_data["currency"]
@@ -573,20 +594,15 @@ class MainWindow(QWidget):
         total_rows = len(currency_rows) + len(metal_rows) + len(bist_rows)
         if total_rows == 0:
             QMessageBox.information(
-                self, "İçe aktarma", "Dosyada içe aktarılabilecek portföy kaydı bulunamadı."
+                self, tr("İçe aktarma"), tr("Dosyada içe aktarılabilecek portföy kaydı bulunamadı.")
             )
             return
 
         details = (
-            f"Döviz: {len(currency_rows)} kayıt\n"
-            f"Maden: {len(metal_rows)} kayıt\n"
-            f"Hisse senedi: {len(bist_rows)} kayıt\n\n"
-            "Aynı varlık veya hisse kodu mevcutsa miktar ve ortalama maliyet Excel dosyasındaki "
-            "değerlerle güncellenecek; kayıtlar ikinci kez eklenmeyecek. "
-            "Dosyada bulunmayan bölümlerdeki mevcut kayıtlar korunacak.\n\nDevam edilsin mi?"
+            tr("Döviz: {0} kayıt\nMaden: {1} kayıt\nHisse senedi: {2} kayıt\n\nAynı varlık veya hisse kodu mevcutsa miktar ve ortalama maliyet Excel dosyasındaki değerlerle güncellenecek; kayıtlar ikinci kez eklenmeyecek. Dosyada bulunmayan bölümlerdeki mevcut kayıtlar korunacak.\n\nDevam edilsin mi?").format(len(currency_rows), len(metal_rows), len(bist_rows))
         )
-        answer = QMessageBox.question(
-            self, "Tüm portföyü içe aktar", details,
+        answer = ask_question(
+            self, tr("Tüm portföyü içe aktar"), details,
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if answer != QMessageBox.Yes:
@@ -606,21 +622,17 @@ class MainWindow(QWidget):
         self.refresh_summary()
 
         message = (
-            "Toplu içe aktarma tamamlandı.\n\n"
-            f"Döviz: {counts['currency']} kayıt\n"
-            f"Maden: {counts['metals']} kayıt\n"
-            f"Hisse senedi: {counts['bist']} kayıt\n"
-            f"Toplam: {sum(counts.values())} kayıt"
+            tr("Toplu içe aktarma tamamlandı.\n\nDöviz: {0} kayıt\nMaden: {1} kayıt\nHisse senedi: {2} kayıt\nToplam: {3} kayıt").format(counts['currency'], counts['metals'], counts['bist'], sum(counts.values()))
         )
         if warnings:
-            message += "\n\nAtlanan Excel satırları:\n" + "\n".join(warnings[:10])
+            message += tr("\n\nAtlanan Excel satırları:\n") + "\n".join(warnings[:10])
         if errors:
-            message += "\n\nKaydedilemeyen kayıtlar:\n" + "\n".join(errors[:10])
-            QMessageBox.warning(self, "İçe aktarma tamamlandı", message)
+            message += tr("\n\nKaydedilemeyen kayıtlar:\n") + "\n".join(errors[:10])
+            QMessageBox.warning(self, tr("İçe aktarma tamamlandı"), message)
         elif warnings:
-            QMessageBox.warning(self, "İçe aktarma tamamlandı", message)
+            QMessageBox.warning(self, tr("İçe aktarma tamamlandı"), message)
         else:
-            QMessageBox.information(self, "İçe aktarma tamamlandı", message)
+            QMessageBox.information(self, tr("İçe aktarma tamamlandı"), message)
 
     # ---------------- WINDOWS STARTUP ----------------
     def _startup_sequence(self) -> None:
@@ -635,9 +647,8 @@ class MainWindow(QWidget):
         if not autostart.set_enabled(enabled):
             QMessageBox.warning(
                 parent or self,
-                "Windows başlangıç ayarı",
-                "Windows başlangıç ayarı değiştirilemedi. Kayıt defterine yazma izni "
-                "olmayabilir; ayarı daha sonra tekrar deneyebilirsiniz.",
+                tr("Windows başlangıç ayarı"),
+                tr("Windows başlangıç ayarı değiştirilemedi. Kayıt defterine yazma izni olmayabilir; ayarı daha sonra tekrar deneyebilirsiniz."),
             )
         actual = autostart.is_enabled()
         self.settings["start_with_windows"] = actual
@@ -650,15 +661,14 @@ class MainWindow(QWidget):
         choice = self.settings.get("start_with_windows", None)
         if choice is None:
             dialog = QMessageBox(self)
-            dialog.setWindowTitle("Windows ile başlat")
+            dialog.setWindowTitle(tr("Windows ile başlat"))
             dialog.setIcon(QMessageBox.Icon.Question)
-            dialog.setText("Bilgisayar açıldığında FinanceTerminal otomatik başlasın mı?")
+            dialog.setText(tr("Bilgisayar açıldığında FinanceTerminal otomatik başlasın mı?"))
             dialog.setInformativeText(
-                "Evet derseniz Windows'a giriş yaptığınızda uygulama kendiliğinden açılır "
-                "ve güncel fiyatları alır. Bu seçimi istediğiniz zaman Ayarlar'dan "
-                "değiştirebilirsiniz."
+                tr("Evet derseniz Windows'a giriş yaptığınızda uygulama kendiliğinden açılır ve güncel fiyatları alır. Bu seçimi istediğiniz zaman Ayarlar'dan değiştirebilirsiniz.")
             )
             dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            localize_message_buttons(dialog)
             dialog.setDefaultButton(QMessageBox.StandardButton.No)
             enabled = dialog.exec() == QMessageBox.StandardButton.Yes
             self._apply_autostart_choice(enabled)
@@ -693,16 +703,16 @@ class MainWindow(QWidget):
         preference = self.settings.get("auto_update_check", None)
         if preference is None:
             dialog = QMessageBox(self)
-            dialog.setWindowTitle("Otomatik güncelleme kontrolü")
+            dialog.setWindowTitle(tr("Otomatik güncelleme kontrolü"))
             dialog.setIcon(QMessageBox.Icon.Question)
-            dialog.setText("FinanceTerminal açılışta güncellemeleri otomatik kontrol etsin mi?")
+            dialog.setText(tr("FinanceTerminal açılışta güncellemeleri otomatik kontrol etsin mi?"))
             dialog.setInformativeText(
-                "Yeni sürüm bulunursa indirme ve kurulumdan önce onayınız istenir. "
-                "Kontrol için internet bağlantısı gerekir."
+                tr("Yeni sürüm bulunursa indirme ve kurulumdan önce onayınız istenir. Kontrol için internet bağlantısı gerekir.")
             )
             dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            localize_message_buttons(dialog)
             dialog.setDefaultButton(QMessageBox.StandardButton.Yes)
-            remember = QCheckBox("Bu tercihi hatırla ve tekrar sorma")
+            remember = QCheckBox(tr("Bu tercihi hatırla ve tekrar sorma"))
             dialog.setCheckBox(remember)
             enabled = dialog.exec() == QMessageBox.StandardButton.Yes
             if remember.isChecked():
@@ -718,11 +728,11 @@ class MainWindow(QWidget):
         """Check the latest stable GitHub Release without blocking the UI."""
         if self._update_check_worker is not None and self._update_check_worker.isRunning():
             if not automatic:
-                QMessageBox.information(self, "Güncelleme", "Güncelleme kontrolü zaten devam ediyor.")
+                QMessageBox.information(self, tr("Güncelleme"), tr("Güncelleme kontrolü zaten devam ediyor."))
             return
         if self._update_download_worker is not None and self._update_download_worker.isRunning():
             if not automatic:
-                QMessageBox.information(self, "Güncelleme", "Güncelleme dosyası şu anda indiriliyor.")
+                QMessageBox.information(self, tr("Güncelleme"), tr("Güncelleme dosyası şu anda indiriliyor."))
             return
 
         self._update_check_automatic = automatic
@@ -741,7 +751,7 @@ class MainWindow(QWidget):
         if worker is not None:
             worker.deleteLater()
         self._update_check_worker = None
-        payload = self._update_check_payload or {"release": None, "error": "Güncelleme kontrolü sonuç vermedi."}
+        payload = self._update_check_payload or {"release": None, "error": tr("Güncelleme kontrolü sonuç vermedi.")}
         automatic = self._update_check_automatic
         error = payload.get("error")
         if error:
@@ -749,7 +759,7 @@ class MainWindow(QWidget):
             # Manual checks still display connection or server errors.
             if not automatic:
                 QMessageBox.warning(
-                    self, "Güncelleme kontrolü", str(error)
+                    self, tr("Güncelleme kontrolü"), str(error)
                 )
             return
 
@@ -761,25 +771,21 @@ class MainWindow(QWidget):
                 QMessageBox.information(
                     self,
                     "FinanceTerminal",
-                    f"Şu an güncelsiniz, {self.VERSION} sürümünü kullanıyorsunuz."
+                    tr("Şu an güncelsiniz, {0} sürümünü kullanıyorsunuz.").format(self.VERSION)
                 )
             return
 
 
         if not getattr(sys, "frozen", False):
             QMessageBox.information(
-                self, "Yeni sürüm bulundu",
-                f"FinanceTerminal {release.version} yayımlandı.\n\n"
-                "Kaynak kod modunda çalıştığınız için uygulama dosyası otomatik değiştirilemez. "
-                f"Windows EXE dosyasını buradan indirebilirsiniz:\n{release.release_url}"
+                self, tr("Yeni sürüm bulundu"),
+                tr("FinanceTerminal {0} yayımlandı.\n\nKaynak kod modunda çalıştığınız için uygulama dosyası otomatik değiştirilemez. Windows EXE dosyasını buradan indirebilirsiniz:\n{1}").format(release.version, release.release_url)
             )
             return
 
-        answer = QMessageBox.question(
-            self, "FinanceTerminal güncellemesi bulundu",
-            f"FinanceTerminal {release.version} sürümü bulundu.\n\n"
-            "Güncelleme şimdi indirilsin ve uygulama yeniden başlatılarak kurulsun mu?\n\n"
-            "Portföy kayıtlarınız ve ayarlarınız korunur. Güncelleme yalnızca uygulama EXE dosyasını değiştirir.",
+        answer = ask_question(
+            self, tr("FinanceTerminal güncellemesi bulundu"),
+            tr("FinanceTerminal {0} sürümü bulundu.\n\nGüncelleme şimdi indirilsin ve uygulama yeniden başlatılarak kurulsun mu?\n\nPortföy kayıtlarınız ve ayarlarınız korunur. Güncelleme yalnızca uygulama EXE dosyasını değiştirir.").format(release.version),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
@@ -795,18 +801,16 @@ class MainWindow(QWidget):
             from core.updater import ensure_install_directory_writable
             ensure_install_directory_writable(executable)
         except UpdateError as exc:
-            QMessageBox.warning(self, "Güncelleme yapılamıyor", str(exc))
+            QMessageBox.warning(self, tr("Güncelleme yapılamıyor"), str(exc))
             return
 
         self._pending_update_release = release
         self._pending_update_automatic = automatic
         self._update_download_payload = None
         self._update_progress = QProgressDialog(self)
-        self._update_progress.setWindowTitle("FinanceTerminal güncellemesi indiriliyor")
+        self._update_progress.setWindowTitle(tr("FinanceTerminal güncellemesi indiriliyor"))
         self._update_progress.setLabelText(
-            f"FinanceTerminal {release.version} indiriliyor...\n"
-            f"0.0 MB / {release.asset_size / 1_000_000:.1f} MB  ·  %0.0\n"
-            "Ortalama indirme hızı hesaplanıyor..."
+            tr("FinanceTerminal {0} indiriliyor...\n0.0 MB / {1:.1f} MB  ·  %0.0\nOrtalama indirme hızı hesaplanıyor...").format(release.version, release.asset_size / 1_000_000)
         )
         self._update_progress.setRange(0, max(1, int(release.asset_size)))
         self._update_progress.setValue(0)
@@ -839,9 +843,7 @@ class MainWindow(QWidget):
         self._update_progress.setRange(0, total)
         self._update_progress.setValue(received)
         self._update_progress.setLabelText(
-            f"FinanceTerminal {self._pending_update_release.version} indiriliyor...\n"
-            f"{received_mb:.2f} MB / {total_mb:.2f} MB  ·  %{percent:.1f}\n"
-            f"Ortalama indirme hızı: {speed_mbps:.2f} MB/sn"
+            tr("FinanceTerminal {0} indiriliyor...\n{1:.2f} MB / {2:.2f} MB  ·  %{3:.1f}\nOrtalama indirme hızı: {4:.2f} MB/sn").format(self._pending_update_release.version, received_mb, total_mb, percent, speed_mbps)
         )
 
     def _store_update_download_result(self, payload) -> None:
@@ -857,10 +859,10 @@ class MainWindow(QWidget):
             self._update_progress.deleteLater()
             self._update_progress = None
 
-        payload = self._update_download_payload or {"path": None, "error": "İndirme sonucu alınamadı."}
+        payload = self._update_download_payload or {"path": None, "error": tr("İndirme sonucu alınamadı.")}
         error = payload.get("error")
         if error:
-            QMessageBox.warning(self, "Güncelleme indirilemedi", str(error))
+            QMessageBox.warning(self, tr("Güncelleme indirilemedi"), str(error))
             return
 
         downloaded = Path(payload["path"])
@@ -876,14 +878,12 @@ class MainWindow(QWidget):
                 downloaded.unlink(missing_ok=True)
             except OSError:
                 pass
-            QMessageBox.warning(self, "Güncelleme başlatılamadı", str(exc))
+            QMessageBox.warning(self, tr("Güncelleme başlatılamadı"), str(exc))
             return
 
         QMessageBox.information(
-            self, "Güncelleme hazır",
-            f"FinanceTerminal {self._pending_update_release.version} indirildi ve doğrulandı. "
-            "Uygulama şimdi kapanacak. Güncelleyici eski EXE'yi yedekleyip yenisini kuracak; "
-            "yeni sürüm açılmazsa eski sürüm otomatik geri yüklenecek."
+            self, tr("Güncelleme hazır"),
+            tr("FinanceTerminal {0} indirildi ve doğrulandı. Uygulama şimdi kapanacak. Güncelleyici eski EXE'yi yedekleyip yenisini kuracak; yeni sürüm açılmazsa eski sürüm otomatik geri yüklenecek.").format(self._pending_update_release.version)
         )
         self._force_exit = True
         self.close()
@@ -906,12 +906,12 @@ class MainWindow(QWidget):
         self._tray_icon = QSystemTrayIcon(
             QIcon(str(resource_path("assets/finance_terminal.png"))), self
         )
-        self._tray_icon.setToolTip("FinanceTerminal - Portföy takibi")
+        self._tray_icon.setToolTip(tr("FinanceTerminal - Portföy takibi"))
         menu = QMenu(self)
-        open_action = menu.addAction("FinanceTerminal'ı Aç")
+        open_action = menu.addAction(tr("FinanceTerminal'ı Aç"))
         open_action.triggered.connect(self.restore_from_tray)
         menu.addSeparator()
-        exit_action = menu.addAction("Çıkış")
+        exit_action = menu.addAction(tr("Çıkış"))
         exit_action.triggered.connect(self.exit_from_tray)
         self._tray_icon.setContextMenu(menu)
         self._tray_icon.activated.connect(self._on_tray_activated)
@@ -947,8 +947,8 @@ class MainWindow(QWidget):
     def _minimize_to_tray(self, notify: bool = True) -> None:
         if not self._tray_available or self._tray_icon is None:
             QMessageBox.information(
-                self, "Sistem tepsisi kullanılamıyor",
-                "Bu Windows oturumunda sistem tepsisi kullanılamıyor. Uygulama kapatılacak."
+                self, tr("Sistem tepsisi kullanılamıyor"),
+                tr("Bu Windows oturumunda sistem tepsisi kullanılamıyor. Uygulama kapatılacak.")
             )
             self._force_exit = True
             self.close()
@@ -961,9 +961,8 @@ class MainWindow(QWidget):
             return
         try:
             self._tray_icon.showMessage(
-                "FinanceTerminal çalışıyor",
-                "FinanceTerminal sistem tepsisinde açık. Fiyatlar otomatik yenilenmez; "
-                "güncelleme için uygulamayı açıp Güncelle'ye basın.",
+                tr("FinanceTerminal çalışıyor"),
+                tr("FinanceTerminal sistem tepsisinde açık. Fiyatlar otomatik yenilenmez; güncelleme için uygulamayı açıp Güncelle'ye basın."),
                 QSystemTrayIcon.MessageIcon.Information,
                 3500,
             )
@@ -976,16 +975,16 @@ class MainWindow(QWidget):
             return False
 
         dialog = QMessageBox(self)
-        dialog.setWindowTitle("FinanceTerminal açık kalsın mı?")
+        dialog.setWindowTitle(tr("FinanceTerminal açık kalsın mı?"))
         dialog.setIcon(QMessageBox.Icon.Question)
-        dialog.setText("Uygulamayı kapatmak yerine sistem tepsisine küçültmek ister misiniz?")
+        dialog.setText(tr("Uygulamayı kapatmak yerine sistem tepsisine küçültmek ister misiniz?"))
         dialog.setInformativeText(
-            "Evet seçerseniz uygulama arka planda açık kalır. Fiyatlar otomatik "
-            "yenilenmez; yalnızca Güncelle düğmesine bastığınızda yenilenir."
+            tr("Evet seçerseniz uygulama arka planda açık kalır. Fiyatlar otomatik yenilenmez; yalnızca Güncelle düğmesine bastığınızda yenilenir.")
         )
         dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        localize_message_buttons(dialog)
         dialog.setDefaultButton(QMessageBox.StandardButton.Yes)
-        remember = QCheckBox("Bu tercihi hatırla ve tekrar sorma")
+        remember = QCheckBox(tr("Bu tercihi hatırla ve tekrar sorma"))
         dialog.setCheckBox(remember)
         answer = dialog.exec()
         minimize = answer == QMessageBox.StandardButton.Yes
@@ -1004,8 +1003,8 @@ class MainWindow(QWidget):
         for update_worker in (self._update_check_worker, self._update_download_worker):
             if update_worker is not None and update_worker.isRunning():
                 QMessageBox.information(
-                    self, "İşlem devam ediyor",
-                    "Güncelleme işlemi tamamlandıktan sonra uygulamayı kapatabilirsiniz."
+                    self, tr("İşlem devam ediyor"),
+                    tr("Güncelleme işlemi tamamlandıktan sonra uygulamayı kapatabilirsiniz.")
                 )
                 event.ignore()
                 return
@@ -1014,7 +1013,7 @@ class MainWindow(QWidget):
         if worker is not None and worker.isRunning():
             self._close_after_update = True
             self.update_button.setEnabled(False)
-            self.last.setText("Güncelleme tamamlanınca uygulama kapanacak...")
+            self.last.setText(tr("Güncelleme tamamlanınca uygulama kapanacak..."))
             event.ignore()
             return
 
@@ -1048,7 +1047,7 @@ class MainWindow(QWidget):
         worker.result.connect(self.on_data)
         worker.finished.connect(self._on_update_finished)
         self.update_button.setEnabled(False)
-        self.last.setText("Güncelleniyor...")
+        self.last.setText(tr("Güncelleniyor..."))
         worker.start()
 
     def _on_update_finished(self):
@@ -1103,7 +1102,7 @@ class MainWindow(QWidget):
 
         for code, card in self.currency_cards.items():
             rate = d.get(code)
-            if self.mode.currentText() == "Ters":
+            if self.mode.currentData() == "reverse":
                 card.title.setText(f"TRY/{code}")
                 try:
                     inverse = 1 / float(rate) if rate is not None and float(rate) > 0 else None
@@ -1122,6 +1121,7 @@ class MainWindow(QWidget):
             eur_try=d.get("EUR"),
             rates_updated_at=d.get("fetched_at"),
             rates_status=d.get("status"),
+            rates=d,
         )
         self.bist_portfolio.rates_updated_at = d.get("fetched_at")
         self.bist_portfolio.rates_status = d.get("status")
@@ -1189,6 +1189,8 @@ class MainWindow(QWidget):
                 QTableWidget#investmentTable::item { padding:6px 5px; border-bottom:1px solid #263d5e; }
                 QTableWidget#investmentTable QHeaderView::section { background:#223b61; color:#ffffff; border:0; border-bottom:2px solid #3a86ff; padding:9px 6px; font-weight:700; }
             """)
+        elif self.theme in EXTRA_THEMES:
+            self.setStyleSheet(build_stylesheet(EXTRA_THEMES[self.theme]))
         else:  # Dark
             self.setStyleSheet("""
                 QWidget { background: #121417; color: #edf0f4; }
@@ -1217,14 +1219,19 @@ class MainWindow(QWidget):
     # ---------------- SETTINGS ----------------
     def open_settings(self):
         dlg = QDialog(self)
-        dlg.setWindowTitle("Ayarlar")
+        dlg.setWindowTitle(tr("Ayarlar"))
         dlg.setMinimumWidth(320)
 
         layout = QVBoxLayout()
-        version = QLabel(f"Version: {self.VERSION}")
+        version = QLabel(tr("Sürüm: {0}").format(self.VERSION))
+
+        language = QComboBox()
+        language.addItem("Türkçe", "tr")  # language names stay in their own language
+        language.addItem("English", "en")
+        language.setCurrentIndex(max(0, language.findData(get_language())))
 
         start_tab = QComboBox()
-        start_tab.addItems(["Summary", "Currency", "Portfolio", "Metals", "BIST AI"])
+        start_tab.addItems([tr("Özet"), tr("Döviz"), tr("Portföy"), tr("Metaller"), tr("BIST AI")])
         start_tab.setCurrentIndex(self.tabs.currentIndex())
 
         precision = QComboBox()
@@ -1232,43 +1239,45 @@ class MainWindow(QWidget):
         precision.setCurrentText(str(self.precision))
 
         theme = QComboBox()
-        theme.addItem("Windows ayarını takip et", "System")
-        theme.addItem("Açık tema", "White")
-        theme.addItem("Koyu tema", "Dark")
-        theme.addItem("Mavi tema", "Blue")
+        theme.addItem(tr("Windows ayarını takip et"), "System")
+        theme.addItem(tr("Açık tema"), "White")
+        theme.addItem(tr("Koyu tema"), "Dark")
+        theme.addItem(tr("Mavi tema"), "Blue")
+        theme.addItem(tr("Gece yarısı teması (tam siyah)"), "Midnight")
+        theme.addItem(tr("Zümrüt teması (yeşil)"), "Emerald")
         theme_index = theme.findData(self.theme_preference)
         theme.setCurrentIndex(theme_index if theme_index >= 0 else 0)
 
-        btn = QPushButton("Kaydet")
+        btn = QPushButton(tr("Kaydet"))
         close_behavior = QComboBox()
-        close_behavior.addItem("Her kapatmada sor", "ask")
-        close_behavior.addItem("Sistem tepsisine küçült", "tray")
-        close_behavior.addItem("Uygulamayı tamamen kapat", "exit")
+        close_behavior.addItem(tr("Her kapatmada sor"), "ask")
+        close_behavior.addItem(tr("Sistem tepsisine küçült"), "tray")
+        close_behavior.addItem(tr("Uygulamayı tamamen kapat"), "exit")
         saved_close = self.settings.get("close_to_tray", None)
         close_key = "ask" if saved_close is None else ("tray" if bool(saved_close) else "exit")
         close_index = close_behavior.findData(close_key)
         close_behavior.setCurrentIndex(close_index if close_index >= 0 else 0)
 
         auto_update = QCheckBox(
-            "Başlangıçta güncellemeleri kontrol et (yeni sürüm bulunursa önce sor)"
+            tr("Başlangıçta güncellemeleri kontrol et (yeni sürüm bulunursa önce sor)")
         )
         auto_update.setChecked(bool(self.settings.get("auto_update_check", False)))
-        update_btn = QPushButton("Güncellemeleri Kontrol Et")
+        update_btn = QPushButton(tr("Güncellemeleri Kontrol Et"))
 
         autostart_supported = autostart.is_supported()
-        autostart_box = QCheckBox("Bilgisayar açıldığında FinanceTerminal otomatik başlasın")
-        start_in_tray = QCheckBox("Otomatik başlarken pencere açılmasın, sistem tepsisinde başlasın")
+        autostart_box = QCheckBox(tr("Bilgisayar açıldığında FinanceTerminal otomatik başlasın"))
+        start_in_tray = QCheckBox(tr("Otomatik başlarken pencere açılmasın, sistem tepsisinde başlasın"))
         if autostart_supported:
             autostart_box.setChecked(autostart.is_enabled())
         else:
             autostart_box.setEnabled(False)
-            autostart_box.setToolTip("Bu seçenek yalnızca Windows'ta kurulu (EXE) sürümde kullanılabilir.")
+            autostart_box.setToolTip(tr("Bu seçenek yalnızca Windows'ta kurulu (EXE) sürümde kullanılabilir."))
         start_in_tray.setChecked(bool(self.settings.get("start_in_tray", False)))
         tray_possible = bool(self._tray_available and autostart_supported)
         start_in_tray.setEnabled(tray_possible and autostart_box.isChecked())
         autostart_box.toggled.connect(lambda checked: start_in_tray.setEnabled(tray_possible and checked))
 
-        help_btn = QPushButton("Yardım / Kullanım Kılavuzu")
+        help_btn = QPushButton(tr("Yardım / Kullanım Kılavuzu"))
         help_btn.clicked.connect(lambda: self.open_help(dlg))
 
         def save_all():
@@ -1277,6 +1286,9 @@ class MainWindow(QWidget):
             self.theme_preference = str(theme.currentData() or "System")
             self.theme = resolve_theme(self.theme_preference)
 
+            new_language = normalize_language(language.currentData())
+            language_changed = new_language != get_language()
+            self.settings["language"] = new_language
             self.settings["precision"] = self.precision
             self.settings["start_tab"] = self.tabs.currentIndex()
             self.settings["theme"] = self.theme_preference
@@ -1292,6 +1304,9 @@ class MainWindow(QWidget):
             self.apply_theme()
             save(self.settings)
             dlg.accept()
+            if language_changed:
+                # Texts are built once per window, so the new language applies after a restart.
+                QTimer.singleShot(150, lambda: self._offer_restart_for_language(new_language))
 
         btn.clicked.connect(save_all)
 
@@ -1301,20 +1316,21 @@ class MainWindow(QWidget):
 
         update_btn.clicked.connect(manual_update_check)
         layout.addWidget(version)
-        layout.addWidget(QLabel("Başlangıç Sekmesi"))
+        layout.addWidget(QLabel(tr("Dil")))
+        layout.addWidget(language)
+        layout.addWidget(QLabel(tr("Başlangıç Sekmesi")))
         layout.addWidget(start_tab)
-        layout.addWidget(QLabel("Hassasiyet"))
+        layout.addWidget(QLabel(tr("Hassasiyet")))
         layout.addWidget(precision)
-        layout.addWidget(QLabel("Tema"))
+        layout.addWidget(QLabel(tr("Tema")))
         layout.addWidget(theme)
-        layout.addWidget(QLabel("Pencereyi X ile kapatınca"))
+        layout.addWidget(QLabel(tr("Pencereyi X ile kapatınca")))
         layout.addWidget(close_behavior)
         layout.addWidget(auto_update)
         layout.addWidget(autostart_box)
         layout.addWidget(start_in_tray)
         layout.addWidget(QLabel(
-            "Yeni sürüm bulunduğunda indirme ve kurulum için ayrıca onayınız istenir. "
-            "Kişisel portföy verileri %APPDATA%\\FinanceTerminal altında saklanır."
+            tr("Yeni sürüm bulunduğunda indirme ve kurulum için ayrıca onayınız istenir. Kişisel portföy verileri %APPDATA%\\FinanceTerminal altında saklanır.")
         ))
         layout.addWidget(btn)
         layout.addWidget(update_btn)
@@ -1322,100 +1338,53 @@ class MainWindow(QWidget):
         dlg.setLayout(layout)
         dlg.exec()
 
+    # ---------------- LANGUAGE ----------------
+    def _offer_restart_for_language(self, language: str) -> None:
+        """Offer to restart now; the prompt is already written in the newly chosen language."""
+        def t(text: str) -> str:
+            return translate(text, language)
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(t(tr_noop("Dil değiştirildi")))
+        box.setText(t(tr_noop("Dil değişikliği uygulama yeniden başlatılınca geçerli olur. Şimdi yeniden başlatılsın mı?")))
+        restart_button = box.addButton(t(tr_noop("Şimdi Yeniden Başlat")), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(t(tr_noop("Daha Sonra")), QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(restart_button)
+        box.exec()
+        if box.clickedButton() is restart_button and not self.restart_application():
+            QMessageBox.warning(
+                self, t(tr_noop("Dil değiştirildi")),
+                t(tr_noop("Uygulama yeniden başlatılamadı. Lütfen FinanceTerminal'ı kapatıp elle yeniden açın.")),
+            )
+
+    def restart_application(self) -> bool:
+        """Start a fresh copy, then close this one. Returns False if it could not restart."""
+        from core.restart import restart_command, spawn_detached
+
+        for update_worker in (self._update_check_worker, self._update_download_worker):
+            if update_worker is not None and update_worker.isRunning():
+                return False  # never interrupt an update
+        single = getattr(self, "single_instance", None)
+        if single is not None:
+            single.close()  # release the lock so the new copy becomes the primary one
+        program, arguments = restart_command()
+        if not spawn_detached(program, arguments):
+            return False
+        self.exit_from_tray()
+        return True
+
     def open_help(self, parent=None):
         """Show a concise, built-in guide for the application tabs."""
         dlg = QDialog(parent or self)
-        dlg.setWindowTitle("FinanceTerminal - Kullanım Kılavuzu")
+        dlg.setWindowTitle(tr("FinanceTerminal - Kullanım Kılavuzu"))
         dlg.resize(620, 560)
 
         layout = QVBoxLayout(dlg)
         browser = QTextBrowser(dlg)
         browser.setOpenExternalLinks(True)
-        browser.setHtml(r"""
-        <h2>FinanceTerminal Kullanım Kılavuzu</h2>
-        <p>FinanceTerminal; döviz, yatırım amaçlı döviz birikimi, değerli maden ve
-        BIST portföy kayıtlarını tek uygulamada takip etmenizi sağlar.</p>
-
-        <h3>Summary</h3>
-        <p>Döviz, maden ve hisse senedi portföylerinizin toplam değerini TRY, EUR
-        ve USD cinsinden özetler. Fiyatlar yenilendiğinde ve portföy kayıtları
-        değiştiğinde özet otomatik güncellenir. BIST hisseleri için güncel fiyat
-        alınabildiğinde piyasa değeri kullanılır; alınamayan hisseler kayıtlı alış
-        maliyetiyle gösterilir ve kâr/zarar hesaplanmaz.</p>
-
-        <h3>Currency</h3>
-        <p>USD, EUR, HUF ve seçtiğiniz diğer desteklenen para birimlerinin kurlarını gösterir.
-        <b>Görüntülenecek Para Birimlerini Seç</b> düğmesiyle kartları kişiselleştirebilirsiniz.
-        <b>Normal</b> görünümde dövizin TL karşılığını, <b>Ters</b> görünümde TL'nin döviz
-        karşılığını gösterir. CHF İsviçre Frangı, CZK Çek Korunası kodudur.</p>
-
-        <h3>Portfolio</h3>
-        <p>Desteklenen döviz alımlarınızı miktar ve alış birim fiyatıyla kaydedin.
-        Aynı dövizden tekrar alım yaptığınızda miktar birleştirilir ve ağırlıklı
-        ortalama maliyet hesaplanır. Kayıt üzerinde çift tıklayarak mevcut toplam
-        miktarı ve ortalama maliyeti düzenleyebilirsiniz. Büyük tutarlar binlik
-        ayraçlarla biçimlendirilir.</p>
-
-        <h3>Metals</h3>
-        <p>Altın ve gümüş alımlarınızı gram miktarı ve alış fiyatıyla kaydedin.
-        Tekrarlanan alımlar birleştirilir; ortalama maliyet, güncel değer ve
-        kâr/zarar hesaplanır. Kayıt üzerinde çift tıklayarak miktar ve ortalama
-        maliyeti düzenleyebilirsiniz. EUR karşılığı güncel EUR/TRY kuruyla hesaplanır.
-        Güncel değerler spot fiyatlara dayanır; işçilik ve alış-satış farklarını içermez.</p>
-
-        <h3>BIST AI</h3>
-        <p>Hisse kodu, şirket adı, adet ve ortalama alış maliyetinizi kaydedin.
-        Kayıtlar bilgisayarınızda saklanır ve Excel'e aktarılabilir. Uygulama
-        açıldığında ve <b>Fiyatları Güncelle</b> düğmesiyle güncel (gecikmeli) hisse
-        fiyatları alınır; piyasa değeri ve kâr/zarar hesaplanır. Fiyatlar resmi
-        olmayan ücretsiz kaynaklardan gelir ve yatırım tavsiyesi değildir. İnternet
-        yoksa son alınan fiyat (en çok 7 gün eski) "eski" işaretiyle gösterilir.
-        Yapay zekâ analizi henüz bulunmamaktadır.</p>
-
-        <h3>Tüm Portföyü Excel'e Aktar</h3>
-        <p>Üstteki düğme tüm bölümleri tek Excel dosyasına aktarır. Dosyada Summary,
-        Döviz, Maden, Hisse Senedi ve Veri Bilgisi sayfaları bulunur. Veri Bilgisi
-        sayfası, dışa aktarım ve son fiyat güncelleme zamanını ve veri sağlayıcılarını
-        gösterir.</p>
-
-        <h3>Kayıt silme</h3>
-        <p>Portfolio, Metals ve BIST AI tablolarında birden fazla satır seçmek için Ctrl veya Shift
-        tuşunu kullanabilirsiniz. <b>Seçili Kayıtları Sil</b> yalnızca seçtiklerinizi kaldırır.
-        <b>Tüm Kayıtları Sil</b> ilgili bölümün bütün kayıtlarını temizler ve ayrıca onay ister.
-        Silme işlemi geri alınamaz; gerekirse önce Excel dışa aktarımıyla yedek alın.</p>
-
-        <h3>Profiller</h3>
-        <p>Üst bölümdeki Profil menüsünden en fazla üç profil kullanabilirsiniz. Profil 1 ve Profil 2
-        hazır gelir; Profil Ekle seçeneği üçüncü profili oluşturur. Her profilin döviz, maden ve BIST
-        kayıtları ayrıdır. Profil adları uzun olabilir; menüde 20 karakterden sonrası kısaltılır,
-        Excel dışa aktarımında tam profil adı korunur. Üçüncü profilden sonra yeni profil eklemek
-        için GitHub üzerinden Issue açmanız gerekir.</p>
-
-        <h3>Ayarlar</h3>
-        <p>Başlangıç sekmesini, sayı hassasiyetini ve temayı seçebilirsiniz.
-        <b>Windows ayarını takip et</b> seçeneği sisteminizin açık/koyu temasını
-        kullanır. Açık, koyu veya mavi temayı ayrıca elle seçebilirsiniz.</p>
-
-        <h3>Güncellemeler</h3>
-        <p>Güncellemeleri Kontrol Et düğmesi GitHub üzerindeki en son kararlı sürümü denetler.
-        Otomatik kontrol açık ise uygulama açılışta kontrol yapar. Yeni sürüm bulunduğunda
-        indirme ve kurulum için mutlaka onayınız istenir. Güncelleme yalnızca EXE dosyasını
-        değiştirir; %APPDATA%\FinanceTerminal altında saklanan portföy verileriniz ve ayarlarınız korunur.
-        Yerel kaynak kod çalıştırmasında EXE otomatik olarak değiştirilemez.</p>
-
-        <h3>Uygulama verileri ve tek örnek</h3>
-        <p>Ayarlar ve portföy verileri Windows kullanıcı profilinizdeki
-        %APPDATA%\FinanceTerminal klasöründe saklanır. Profil verileri
-        profiles\profile1\data, profiles\profile2\data ve (oluşturulursa)
-        profiles\profile3\data klasörlerinde ayrı tutulur.
-        Böylece masaüstünde config.json dosyası oluşmaz ve uygulama güncellendiğinde kayıtlarınız silinmez. FinanceTerminal
-        zaten açıksa EXE'yi yeniden başlatmak yeni pencere oluşturmaz; açık pencereyi öne getirir.</p>
-
-        <p><i>Not: Uygulamadaki fiyatlar bilgilendirme ve portföy takibi içindir.
-        Gerçek işlem öncesinde bankanızın, aracı kurumunuzun veya kuyumcunuzun
-        alış-satış fiyatlarını kontrol edin.</i></p>
-        """)
-        close_btn = QPushButton("Kapat", dlg)
+        browser.setHtml(help_html())
+        close_btn = QPushButton(tr("Kapat"), dlg)
         close_btn.clicked.connect(dlg.accept)
         layout.addWidget(browser)
         layout.addWidget(close_btn)

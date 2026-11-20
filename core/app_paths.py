@@ -5,6 +5,8 @@ import os
 import shutil
 from pathlib import Path
 
+from core.i18n import tr
+
 _ACTIVE_PROFILE_ID = "profile1"
 _VALID_PROFILE_IDS = {"profile1", "profile2", "profile3"}
 
@@ -23,7 +25,7 @@ def set_active_profile(profile_id: str) -> None:
     global _ACTIVE_PROFILE_ID
     normalized = str(profile_id or "profile1").strip().lower()
     if normalized not in _VALID_PROFILE_IDS:
-        raise ValueError("Geçersiz FinanceTerminal profili.")
+        raise ValueError(tr("Geçersiz FinanceTerminal profili."))
     _ACTIVE_PROFILE_ID = normalized
 
 
@@ -34,7 +36,7 @@ def active_profile_id() -> str:
 def profile_directory(profile_id: str | None = None) -> Path:
     normalized = str(profile_id or _ACTIVE_PROFILE_ID).strip().lower()
     if normalized not in _VALID_PROFILE_IDS:
-        raise ValueError("Geçersiz FinanceTerminal profili.")
+        raise ValueError(tr("Geçersiz FinanceTerminal profili."))
     return app_data_directory() / "profiles" / normalized
 
 

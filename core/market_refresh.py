@@ -15,11 +15,16 @@ from core.app_paths import app_data_directory
 from core.cache import load_json, save_json_atomic
 from core.log_setup import get_logger
 from features.currencies import CURRENCY_INFO
+from core.i18n import tr
 
 log = get_logger("market")
 
 CACHE_MAX_AGE = timedelta(days=7)
-METAL_LABELS = {"gold": "altın", "silver": "gümüş"}
+METAL_KEYS = ("gold", "silver")
+
+
+def _metal_label(key: str) -> str:
+    return {"gold": tr("altın"), "silver": tr("gümüş")}[key]
 
 
 def default_cache_path() -> Path:
@@ -81,10 +86,10 @@ def apply_cache(data: dict[str, Any], cache_path: Path, now: datetime) -> dict[s
                 data[code] = found[0]
                 oldest = found[1] if oldest is None else min(oldest, found[1])
         if oldest is not None:
-            data["status"] = f"Offline (önbellek: {_local_text(oldest)})"
+            data["status"] = tr("Offline (önbellek: {0})").format(_local_text(oldest))
 
     cached_metals: list[str] = []
-    for key in METAL_LABELS:
+    for key in METAL_KEYS:
         value = _positive(data.get(key))
         if value is not None:
             metal_entries[key] = {"v": value, "at": stamp}
@@ -93,11 +98,11 @@ def apply_cache(data: dict[str, Any], cache_path: Path, now: datetime) -> dict[s
         found = _entry_value(metal_entries.get(key), now)
         if found is not None:
             data[key] = found[0]
-            cached_metals.append(METAL_LABELS[key])
+            cached_metals.append(_metal_label(key))
         else:
             data[key] = None
     if cached_metals:
-        data["status"] = f"{data.get('status', '')} · {'/'.join(cached_metals)} önbellekten".strip(" ·")
+        data["status"] = tr("{0} · {1} önbellekten").format(data.get('status', ''), '/'.join(cached_metals)).strip(" ·")
 
     if changed:
         cache["version"] = 1

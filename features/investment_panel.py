@@ -35,6 +35,8 @@ from features.investment_store import (
 from features.investment_excel import read_investment_holdings_excel
 from features.export_dialog import EXPORT, TEMPLATE, ask_export_mode, run_template_export
 from features.export_templates import template_filename, write_investment_template
+from core.i18n import tr, tr_noop
+from features.dialogs import ask_question, ask_warning_question, localize_dialog_buttons, localize_message_buttons
 
 
 class InvestmentPanel(QGroupBox):
@@ -43,14 +45,14 @@ class InvestmentPanel(QGroupBox):
     portfolio_changed = Signal()
 
     HEADERS = [
-        "Varlık",
-        "Miktar",
-        "Ort. Alış (₺)",
-        "Toplam Maliyet (₺)",
-        "Güncel Fiyat (₺)",
-        "Güncel Değer (₺)",
-        "Kâr / Zarar (₺)",
-        "Kâr / Zarar (%)",
+        tr_noop("Varlık"),
+        tr_noop("Miktar"),
+        tr_noop("Ort. Alış (₺)"),
+        tr_noop("Toplam Maliyet (₺)"),
+        tr_noop("Güncel Fiyat (₺)"),
+        tr_noop("Güncel Değer (₺)"),
+        tr_noop("Kâr / Zarar (₺)"),
+        tr_noop("Kâr / Zarar (%)"),
     ]
 
     def __init__(
@@ -90,43 +92,43 @@ class InvestmentPanel(QGroupBox):
             self.asset_input.addItem(display_name, code)
 
         self.quantity_input = QLineEdit()
-        self.quantity_input.setPlaceholderText("Örn. 10")
+        self.quantity_input.setPlaceholderText(tr("Örn. 10"))
         self.cost_input = QLineEdit()
-        self.cost_input.setPlaceholderText("Örn. 32,50")
+        self.cost_input.setPlaceholderText(tr("Örn. 32,50"))
 
-        form.addWidget(QLabel("Varlık"))
+        form.addWidget(QLabel(tr("Varlık")))
         form.addWidget(self.asset_input, 2)
         form.addWidget(QLabel(quantity_label))
         form.addWidget(self.quantity_input, 1)
-        form.addWidget(QLabel("Alış birim fiyatı (₺)"))
+        form.addWidget(QLabel(tr("Alış birim fiyatı (₺)")))
         form.addWidget(self.cost_input, 1)
 
-        self.save_button = QPushButton("Alımı Kaydet")
+        self.save_button = QPushButton(tr("Alımı Kaydet"))
         self.save_button.clicked.connect(self.save_purchase)
         form.addWidget(self.save_button)
         root.addLayout(form)
 
         self.info_label = QLabel(
-            "Aynı varlığa yapılan yeni alımlar miktara eklenir ve ağırlıklı ortalama maliyet güncellenir."
+            tr("Aynı varlığa yapılan yeni alımlar miktara eklenir ve ağırlıklı ortalama maliyet güncellenir.")
         )
         self.info_label.setObjectName("investmentInfo")
         self.info_label.setWordWrap(True)
         root.addWidget(self.info_label)
 
-        self.last_update_label = QLabel("Son güncelleme: Henüz veri alınmadı")
+        self.last_update_label = QLabel(tr("Son güncelleme: Henüz veri alınmadı"))
         self.last_update_label.setObjectName("investmentLastUpdate")
         root.addWidget(self.last_update_label)
 
         action_row = QHBoxLayout()
-        self.clear_button = QPushButton("Formu Temizle")
+        self.clear_button = QPushButton(tr("Formu Temizle"))
         self.clear_button.clicked.connect(self.clear_form)
-        self.delete_button = QPushButton("Seçili Kayıtları Sil")
+        self.delete_button = QPushButton(tr("Seçili Kayıtları Sil"))
         self.delete_button.clicked.connect(self.delete_selected)
-        self.delete_all_button = QPushButton("Tüm Kayıtları Sil")
+        self.delete_all_button = QPushButton(tr("Tüm Kayıtları Sil"))
         self.delete_all_button.clicked.connect(self.delete_all)
-        self.import_button = QPushButton("Excel'den İçe Aktar")
+        self.import_button = QPushButton(tr("Excel'den İçe Aktar"))
         self.import_button.clicked.connect(self.import_excel)
-        self.export_button = QPushButton("Excel'e Aktar")
+        self.export_button = QPushButton(tr("Excel'e Aktar"))
         self.export_button.clicked.connect(self.export_excel)
         action_row.addWidget(self.clear_button)
         action_row.addWidget(self.delete_button)
@@ -144,7 +146,7 @@ class InvestmentPanel(QGroupBox):
         self.table.setWordWrap(False)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.table.setHorizontalHeaderLabels(self.HEADERS)
+        self.table.setHorizontalHeaderLabels([tr(title) for title in self.HEADERS])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -184,10 +186,10 @@ class InvestmentPanel(QGroupBox):
         self.refresh_table()
 
     def _refresh_update_label(self) -> None:
-        updated = self.rates_updated_at or "Henüz veri alınmadı"
+        updated = self.rates_updated_at or tr("Henüz veri alınmadı")
         status = self.rates_status or "Bilinmiyor"
         self.last_update_label.setText(
-            f"Son güncelleme: {updated}  |  Veri durumu: {status}"
+            tr("Son güncelleme: {0}  |  Veri durumu: {1}").format(updated, status)
         )
 
     def _selected_codes(self) -> list[str]:
@@ -205,7 +207,7 @@ class InvestmentPanel(QGroupBox):
         display_name, unit = self.assets[code]
         try:
             quantity = parse_localized_decimal(self.quantity_input.text(), field_name="Miktar")
-            unit_cost = parse_localized_decimal(self.cost_input.text(), field_name="Alış birim fiyatı")
+            unit_cost = parse_localized_decimal(self.cost_input.text(), field_name=tr("Alış birim fiyatı"))
             self.store.add_purchase(
                 self.asset_group,
                 code,
@@ -218,9 +220,9 @@ class InvestmentPanel(QGroupBox):
             self.cost_input.clear()
             self.refresh_table()
             self.portfolio_changed.emit()
-            QMessageBox.information(self, "Kayıt başarılı", f"{display_name} alımı kaydedildi.\nYeni alımlar mevcut miktara eklenir.")
+            QMessageBox.information(self, tr("Kayıt başarılı"), tr("{0} alımı kaydedildi.\nYeni alımlar mevcut miktara eklenir.").format(display_name))
         except Exception as exc:
-            QMessageBox.warning(self, "Kayıt yapılamadı", str(exc))
+            QMessageBox.warning(self, tr("Kayıt yapılamadı"), str(exc))
 
     def refresh_table(self) -> None:
         holdings = self.store.list_holdings(self.asset_group)
@@ -241,7 +243,7 @@ class InvestmentPanel(QGroupBox):
                 profit_loss_text = format_localized(profit_loss)
                 profit_pct_text = f"{format_localized(profit_pct)}%"
             else:
-                current_price_text = current_value_text = profit_loss_text = profit_pct_text = "Veri yok"
+                current_price_text = current_value_text = profit_loss_text = profit_pct_text = tr("Veri yok")
 
             values = [
                 holding["display_name"],
@@ -269,22 +271,23 @@ class InvestmentPanel(QGroupBox):
             return
         holding = self.store.get_holding(self.asset_group, code)
         if holding is None:
-            QMessageBox.warning(self, "Kayıt bulunamadı", "Düzenlenecek kayıt artık mevcut değil.")
+            QMessageBox.warning(self, tr("Kayıt bulunamadı"), tr("Düzenlenecek kayıt artık mevcut değil."))
             self.refresh_table()
             return
 
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"{holding['display_name']} kaydını düzenle")
+        dialog.setWindowTitle(tr("{0} kaydını düzenle").format(holding['display_name']))
         dialog.setMinimumWidth(340)
         form = QFormLayout(dialog)
         quantity_edit = QLineEdit(format_quantity(Decimal(holding["quantity"])))
         cost_edit = QLineEdit(format_localized(Decimal(holding["average_cost_try"])))
-        quantity_edit.setPlaceholderText("Örn. 10,5")
-        cost_edit.setPlaceholderText("Örn. 3.250,00")
+        quantity_edit.setPlaceholderText(tr("Örn. 10,5"))
+        cost_edit.setPlaceholderText(tr("Örn. 3.250,00"))
         form.addRow(f"Miktar ({holding['unit']})", quantity_edit)
-        form.addRow("Ortalama alış birim fiyatı (₺)", cost_edit)
+        form.addRow(tr("Ortalama alış birim fiyatı (₺)"), cost_edit)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        localize_dialog_buttons(buttons)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         form.addRow(buttons)
@@ -294,7 +297,7 @@ class InvestmentPanel(QGroupBox):
         try:
             quantity = parse_localized_decimal(quantity_edit.text(), field_name="Miktar")
             average_cost = parse_localized_decimal(
-                cost_edit.text(), field_name="Ortalama alış fiyatı"
+                cost_edit.text(), field_name=tr("Ortalama alış fiyatı")
             )
             self.store.set_holding(
                 self.asset_group,
@@ -307,11 +310,11 @@ class InvestmentPanel(QGroupBox):
             self.refresh_table()
             self.portfolio_changed.emit()
             QMessageBox.information(
-                self, "Kayıt güncellendi",
-                f"{holding['display_name']} miktarı ve ortalama maliyeti güncellendi.",
+                self, tr("Kayıt güncellendi"),
+                tr("{0} miktarı ve ortalama maliyeti güncellendi.").format(holding['display_name']),
             )
         except Exception as exc:
-            QMessageBox.warning(self, "Kayıt güncellenemedi", str(exc))
+            QMessageBox.warning(self, tr("Kayıt güncellenemedi"), str(exc))
 
     def clear_form(self) -> None:
         self.quantity_input.clear()
@@ -322,14 +325,14 @@ class InvestmentPanel(QGroupBox):
     def delete_selected(self) -> None:
         codes = self._selected_codes()
         if not codes:
-            QMessageBox.information(self, "Kayıt sil", "Önce tablodan bir veya daha fazla kayıt seç.")
+            QMessageBox.information(self, tr("Kayıt sil"), tr("Önce tablodan bir veya daha fazla kayıt seç."))
             return
         names = [self.assets[code][0] for code in codes if code in self.assets]
-        answer = QMessageBox.question(
+        answer = ask_question(
             self,
-            "Seçili kayıtları sil",
-            f"{len(codes)} seçili kayıt silinecek:\n" + ", ".join(names)
-            + "\n\nDevam edilsin mi?",
+            tr("Seçili kayıtları sil"),
+            tr("{0} seçili kayıt silinecek:\n").format(len(codes)) + ", ".join(names)
+            + tr("\n\nDevam edilsin mi?"),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -341,13 +344,12 @@ class InvestmentPanel(QGroupBox):
     def delete_all(self) -> None:
         holdings = self.store.list_holdings(self.asset_group)
         if not holdings:
-            QMessageBox.information(self, "Tüm kayıtları sil", "Bu bölümde silinecek kayıt yok.")
+            QMessageBox.information(self, tr("Tüm kayıtları sil"), tr("Bu bölümde silinecek kayıt yok."))
             return
-        answer = QMessageBox.warning(
+        answer = ask_warning_question(
             self,
-            "Tüm kayıtları sil",
-            f"{len(holdings)} {self.title().lower()} kaydının tamamı kalıcı olarak silinecek.\n\n"
-            "Bu işlem geri alınamaz. Devam edilsin mi?",
+            tr("Tüm kayıtları sil"),
+            tr("{0} {1} kaydının tamamı kalıcı olarak silinecek.\n\nBu işlem geri alınamaz. Devam edilsin mi?").format(len(holdings), self.title().lower()),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -360,9 +362,9 @@ class InvestmentPanel(QGroupBox):
     def import_excel(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Portföy Excel dosyasını seç",
+            tr("Portföy Excel dosyasını seç"),
             str(Path.home()),
-            "Excel dosyaları (*.xlsx)",
+            tr("Excel dosyaları (*.xlsx)"),
         )
         if not path:
             return
@@ -373,14 +375,13 @@ class InvestmentPanel(QGroupBox):
                 allowed_assets=self.assets,
             )
             if not rows:
-                QMessageBox.information(self, "İçe aktarma", "İçe aktarılacak kayıt bulunamadı.")
+                QMessageBox.information(self, tr("İçe aktarma"), tr("İçe aktarılacak kayıt bulunamadı."))
                 return
 
-            answer = QMessageBox.question(
+            answer = ask_question(
                 self,
-                "İçe aktarmayı onayla",
-                f"{len(rows)} varlık kaydı içe aktarılacak. Aynı varlık varsa mevcut miktar ve "
-                "ortalama maliyet dosyadaki değerlerle değiştirilecek.\n\nDevam edilsin mi?",
+                tr("İçe aktarmayı onayla"),
+                tr("{0} varlık kaydı içe aktarılacak. Aynı varlık varsa mevcut miktar ve ortalama maliyet dosyadaki değerlerle değiştirilecek.\n\nDevam edilsin mi?").format(len(rows)),
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )
@@ -407,25 +408,25 @@ class InvestmentPanel(QGroupBox):
             self.refresh_table()
             if imported:
                 self.portfolio_changed.emit()
-            messages = [f"{imported} kayıt içe aktarıldı."]
+            messages = [tr("{0} kayıt içe aktarıldı.").format(imported)]
             if parser_errors:
-                messages.append("\nAtlanan satırlar:\n" + "\n".join(parser_errors[:10]))
+                messages.append(tr("\nAtlanan satırlar:\n") + "\n".join(parser_errors[:10]))
             if errors:
-                messages.append("\nKaydedilemeyen kayıtlar:\n" + "\n".join(errors[:10]))
+                messages.append(tr("\nKaydedilemeyen kayıtlar:\n") + "\n".join(errors[:10]))
             if parser_errors or errors:
-                QMessageBox.warning(self, "İçe aktarma tamamlandı", "".join(messages))
+                QMessageBox.warning(self, tr("İçe aktarma tamamlandı"), "".join(messages))
             else:
-                QMessageBox.information(self, "İçe aktarma tamamlandı", messages[0])
+                QMessageBox.information(self, tr("İçe aktarma tamamlandı"), messages[0])
         except Exception as exc:
-            QMessageBox.warning(self, "Excel okunamadı", str(exc))
+            QMessageBox.warning(self, tr("Excel okunamadı"), str(exc))
 
     def export_excel(self) -> None:
-        section = "Döviz portföyü" if self.asset_group == "currency" else "Metal portföyü"
+        section = tr("Döviz portföyü") if self.asset_group == "currency" else tr("Metal portföyü")
         mode = ask_export_mode(self, section)
         if mode == TEMPLATE:
             run_template_export(
                 self,
-                caption=f"{section} örnek şablonunu kaydet",
+                caption=tr("{0} örnek şablonunu kaydet").format(section),
                 default_name=template_filename(self.export_filename),
                 writer=lambda target: write_investment_template(target, self.asset_group, self.assets),
             )
@@ -434,13 +435,13 @@ class InvestmentPanel(QGroupBox):
             return
         holdings = self.store.list_holdings(self.asset_group)
         if not holdings:
-            QMessageBox.information(self, "Dışa aktarma", "Dışa aktarılacak kayıt bulunmuyor.")
+            QMessageBox.information(self, tr("Dışa aktarma"), tr("Dışa aktarılacak kayıt bulunmuyor."))
             return
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Portföyü Excel olarak kaydet",
+            tr("Portföyü Excel olarak kaydet"),
             str(Path.home() / self.export_filename),
-            "Excel dosyaları (*.xlsx)",
+            tr("Excel dosyaları (*.xlsx)"),
         )
         if not path:
             return
@@ -451,10 +452,10 @@ class InvestmentPanel(QGroupBox):
                 path,
                 holdings,
                 self.current_prices,
-                title="Döviz Portföyü" if self.asset_group == "currency" else "Metal Portföyü",
+                title=tr("Döviz Portföyü") if self.asset_group == "currency" else tr("Metal Portföyü"),
                 rates_updated_at=self.rates_updated_at,
                 rates_status=self.rates_status,
             )
-            QMessageBox.information(self, "Dışa aktarma tamamlandı", f"Dosya kaydedildi:\n{path}")
+            QMessageBox.information(self, tr("Dışa aktarma tamamlandı"), tr("Dosya kaydedildi:\n{0}").format(path))
         except Exception as exc:
-            QMessageBox.warning(self, "Dışa aktarma başarısız", str(exc))
+            QMessageBox.warning(self, tr("Dışa aktarma başarısız"), str(exc))

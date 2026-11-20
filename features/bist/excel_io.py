@@ -12,27 +12,27 @@ from openpyxl.utils import get_column_letter
 
 from features.export_metadata import add_export_metadata_sheet, local_timestamp
 from .valuation import value_holdings
+from core.i18n import tr
 
 
-HEADERS = [
-    "Hisse Kodu",
-    "Şirket Adı",
-    "Adet",
-    "Ortalama Maliyet (TL)",
-    "Toplam Maliyet (TL)",
-    "Sektör",
-    "Notlar",
-]
+def headers() -> list[str]:
+    """Columns the importer understands (names follow the active language)."""
+    return [
+        tr("Hisse Kodu"), tr("Şirket Adı"), tr("Adet"), tr("Ortalama Maliyet (TL)"),
+        tr("Toplam Maliyet (TL)"), tr("Sektör"), tr("Notlar"),
+    ]
 
-# The export adds price/profit-loss columns after the import columns. The reader
-# only looks columns up by header name, so these extra columns never affect import.
-EXPORT_HEADERS = HEADERS + [
-    "Güncel Fiyat (TL)",
-    "Güncel Değer (TL)",
-    "Kâr / Zarar (TL)",
-    "Kâr / Zarar (%)",
-    "Fiyat Kaynağı / Zamanı",
-]
+
+def export_headers() -> list[str]:
+    """The export adds price/profit-loss columns after the import columns.
+
+    The reader only looks columns up by header name, so these extra columns never
+    affect import.
+    """
+    return headers() + [
+        tr("Güncel Fiyat (TL)"), tr("Güncel Değer (TL)"), tr("Kâr / Zarar (TL)"),
+        tr("Kâr / Zarar (%)"), tr("Fiyat Kaynağı / Zamanı"),
+    ]
 
 
 def _normalise_header(value: object) -> str:
@@ -48,7 +48,7 @@ ALIASES = {
     "quantity": {"adet", "lot", "miktar", "quantity", "shares"},
     "average_cost": {
         "ortalamamaliyettl", "ortalamamaliyet", "maliyet", "alismaliyeti",
-        "averagecost", "cost", "avgcost",
+        "averagecost", "averagecosttry", "cost", "avgcost",
     },
     "sector": {"sektor", "sector"},
     "notes": {"notlar", "not", "aciklama", "notes", "description"},
@@ -76,12 +76,12 @@ def read_portfolio_excel(path: str | Path) -> list[dict[str, Any]]:
             if required.issubset(candidate_mapping):
                 sheet = candidate
                 mapping = candidate_mapping
-                if _normalise_header(candidate.title) in {"hissesened", "bistportfoy"}:
+                if _normalise_header(candidate.title) in {"hissesenedi", "bistportfoy", "bistportfolio", "stocks"}:
                     break
 
         if sheet is None:
-            names = {"symbol": "Hisse Kodu", "quantity": "Adet", "average_cost": "Ortalama Maliyet"}
-            raise ValueError("Gerekli BIST sütunlarını içeren sayfa bulunamadı: " + ", ".join(names[item] for item in required))
+            names = {"symbol": tr("Hisse Kodu"), "quantity": tr("Adet"), "average_cost": tr("Ortalama Maliyet")}
+            raise ValueError(tr("Gerekli BIST sütunlarını içeren sayfa bulunamadı: ") + ", ".join(names[item] for item in required))
 
         iterator = sheet.iter_rows(min_row=2, values_only=True)
         results: list[dict[str, Any]] = []
@@ -129,8 +129,8 @@ def write_portfolio_excel(
     notes = price_notes or {}
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "BIST Portföy"
-    sheet.append(EXPORT_HEADERS)
+    sheet.title = tr("BIST Portföy")
+    sheet.append(export_headers())
 
     for cell in sheet[1]:
         cell.font = Font(bold=True, color="FFFFFF")
@@ -152,7 +152,7 @@ def write_portfolio_excel(
                 float(row["market_value"]) if row["market_value"] is not None else None,
                 float(row["profit_loss"]) if row["profit_loss"] is not None else None,
                 float(row["profit_loss_pct"]) if row["profit_loss_pct"] is not None else None,
-                notes.get(row["symbol"]) or ("Fiyat alınamadı" if price is None else ""),
+                notes.get(row["symbol"]) or (tr("Fiyat alınamadı") if price is None else ""),
             ]
         )
 
@@ -169,18 +169,18 @@ def write_portfolio_excel(
                 cell.number_format = number_format
         footer += 1
 
-    footer_line("Toplam Maliyet", float(valuation["total_cost"]), "#,##0.00")
+    footer_line(tr("Toplam Maliyet"), float(valuation["total_cost"]), "#,##0.00")
     if valuation["market_value"] is not None:
-        footer_line("Güncel Değer (fiyatı alınan hisseler)", float(valuation["market_value"]), "#,##0.00")
-        footer_line("Kâr / Zarar (TL)", float(valuation["profit_loss"]), "#,##0.00")
+        footer_line(tr("Güncel Değer (fiyatı alınan hisseler)"), float(valuation["market_value"]), "#,##0.00")
+        footer_line(tr("Kâr / Zarar (TL)"), float(valuation["profit_loss"]), "#,##0.00")
         if valuation["profit_loss_pct"] is not None:
-            footer_line("Kâr / Zarar (%)", float(valuation["profit_loss_pct"]), '0.00"%"')
+            footer_line(tr("Kâr / Zarar (%)"), float(valuation["profit_loss_pct"]), '0.00"%"')
     if valuation["missing"]:
         footer_line(
-            "⚠ Fiyatı alınamayan hisseler: " + ", ".join(valuation["missing"])
-            + " (kâr/zarar yalnızca fiyatı alınan hisseleri kapsar)"
+            tr("⚠ Fiyatı alınamayan hisseler: ") + ", ".join(valuation["missing"])
+            + tr(" (kâr/zarar yalnızca fiyatı alınan hisseleri kapsar)")
         )
-    footer_line("Hesaplama zamanı", local_timestamp())
+    footer_line(tr("Hesaplama zamanı"), local_timestamp())
 
     for row in sheet.iter_rows(min_row=2, max_row=1 + len(holdings)):
         for cell in row:

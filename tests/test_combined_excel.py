@@ -50,8 +50,8 @@ class CombinedExcelTests(unittest.TestCase):
         )
 
         workbook = load_workbook(path, data_only=True)
-        self.assertEqual(workbook.sheetnames, ["Summary", "Döviz", "Maden", "Hisse Senedi", "Veri Bilgisi"])
-        summary = workbook["Summary"]
+        self.assertEqual(workbook.sheetnames, ["Özet", "Döviz", "Maden", "Hisse Senedi", "Veri Bilgisi"])
+        summary = workbook["Özet"]
         self.assertEqual(summary["A3"].value, "Bu dosya şu profile aittir")
         self.assertEqual(summary["B3"].value, "Benim Portföyüm")
         self.assertEqual(summary["A5"].value, "Döviz")
@@ -108,7 +108,7 @@ class CombinedExcelTests(unittest.TestCase):
             profile_name=long_profile_name,
         )
         workbook = load_workbook(path, data_only=True)
-        self.assertEqual(workbook["Summary"]["B3"].value, long_profile_name)
+        self.assertEqual(workbook["Özet"]["B3"].value, long_profile_name)
         metadata = workbook["Veri Bilgisi"]
         profile_row = next(
             row for row in range(1, metadata.max_row + 1)
