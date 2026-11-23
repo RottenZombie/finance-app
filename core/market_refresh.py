@@ -14,6 +14,7 @@ from core.api import get_all_rates, get_metal_prices
 from core.app_paths import app_data_directory
 from core.cache import load_json, save_json_atomic
 from core.log_setup import get_logger
+from core.timefmt import format_local
 from features.currencies import CURRENCY_INFO
 from core.i18n import tr
 
@@ -116,7 +117,7 @@ def offline_snapshot() -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     data: dict[str, Any] = {code: None for code in CURRENCY_INFO}
     data.update({"TRY": 1.0, "gold": None, "silver": None, "status": "Offline"})
-    data["fetched_at"] = now.astimezone().strftime("%d.%m.%Y %H:%M:%S %Z").strip()
+    data["fetched_at"] = format_local(now)
     return data
 
 
@@ -133,7 +134,7 @@ def collect_market_snapshot(
         data = dict(rates_fn())
         gold, silver = metals_fn()
         data["gold"], data["silver"] = gold, silver
-        data["fetched_at"] = moment.astimezone().strftime("%d.%m.%Y %H:%M:%S %Z").strip()
+        data["fetched_at"] = format_local(moment)
         return apply_cache(data, Path(cache_path) if cache_path else default_cache_path(), moment)
     except Exception:
         log.error("Piyasa verisi toplanamadı", exc_info=True)

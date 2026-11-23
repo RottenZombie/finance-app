@@ -29,7 +29,8 @@ from .database import BistDatabase
 from .excel_io import read_portfolio_excel, write_portfolio_excel
 from features.export_dialog import EXPORT, TEMPLATE, ask_export_mode, run_template_export
 from features.export_templates import write_bist_template
-from .quotes import Quote, describe_quote, quotes_from_payload
+from .quotes import Quote, describe_quote, format_quote_time, quotes_from_payload
+from .refresh_status import status_text, summarize_refresh
 from .valuation import value_holdings
 from .utils import format_quantity, format_tl, normalize_symbol, parse_localized_decimal
 from core.i18n import tr, tr_noop
@@ -56,6 +57,9 @@ class BistPortfolioTab(QWidget):
         self.database = database or BistDatabase()
         self._quotes: dict[str, Quote] = {}
         self._quote_info: dict | None = None
+        self._refreshing = False
+        self._status_text = ""
+        self._changes: dict[str, Decimal] = {}  # price change in the last refresh
         self._build_ui()
         self.refresh_table()
 
@@ -185,6 +189,12 @@ class BistPortfolioTab(QWidget):
         self.table.itemDoubleClicked.connect(self.edit_holding)
         root.addWidget(self.table, 1)
 
+        # One clear line about the last price refresh (time, how many prices moved).
+        self.price_status = QLabel(tr("Fiyatlar henüz alınmadı."))
+        self.price_status.setObjectName("bistPriceStatus")
+        self.price_status.setWordWrap(True)
+        self.price_status.setStyleSheet("font-weight: 600;")
+        root.addWidget(self.price_status)
         self.notice = QLabel("")
         self.notice.setObjectName("bistNotice")
         self.notice.setWordWrap(True)
@@ -211,6 +221,7 @@ class BistPortfolioTab(QWidget):
     # ------------------------------------------------------------ prices
     def set_quotes(self, payload: dict | None) -> None:
         """Receive the quote payload produced by the refresh worker."""
+        previous = self._quotes
         self._quotes = quotes_from_payload(payload)
         info = payload if isinstance(payload, dict) else {}
         self._quote_info = {
@@ -218,9 +229,34 @@ class BistPortfolioTab(QWidget):
             "cached": len(info.get("cached") or []),
             "failed": list(info.get("failed") or []),
         }
+        summary = summarize_refresh(previous, self._quotes, info)
+        self._changes = dict(summary.changes)
+        self._status_text = status_text(summary)
+        self._refreshing = False
+        self._apply_refresh_state()
         self._update_notice()
         self.refresh_table()
         self.portfolio_changed.emit()
+
+    def set_refreshing(self, active: bool) -> None:
+        """Show that a price refresh is running (button + status line)."""
+        self._refreshing = bool(active)
+        self._apply_refresh_state()
+
+    def show_no_holdings(self) -> None:
+        self._refreshing = False
+        self._status_text = tr("Fiyat alınacak hisse yok. Önce bir hisse ekleyin.")
+        self._apply_refresh_state()
+
+    def _apply_refresh_state(self) -> None:
+        self.refresh_prices_button.setEnabled(not self._refreshing)
+        self.refresh_prices_button.setText(
+            tr("Güncelleniyor…") if self._refreshing else tr("Fiyatları Güncelle")
+        )
+        if self._refreshing:
+            self.price_status.setText(tr("Fiyatlar alınıyor…"))
+        else:
+            self.price_status.setText(self._status_text or tr("Fiyatlar henüz alınmadı."))
 
     def price_map(self) -> dict[str, Decimal] | None:
         """Current prices by ticker for the Summary tab.
@@ -237,22 +273,11 @@ class BistPortfolioTab(QWidget):
         return {symbol: describe_quote(quote) for symbol, quote in self._quotes.items()}
 
     def _update_notice(self) -> None:
-        base = (
-            tr("Fiyatlar gecikmeli ve resmi olmayan kaynaklardan alınır; yatırım tavsiyesi değildir. KAP taraması ve yapay zekâ analizleri sonraki aşamada eklenecek.")
-        )
-        info = self._quote_info
-        if not info:
+        base = tr("Fiyatlar gecikmeli ve resmi olmayan kaynaklardan alınır; yatırım tavsiyesi değildir. KAP taraması ve yapay zekâ analizleri sonraki aşamada eklenecek.")
+        if not self._quote_info:
             self.notice.setText(tr("Güncel fiyatlar için \"Fiyatları Güncelle\" düğmesini kullanın. ") + base)
-            return
-        parts = []
-        if info["live"]:
-            parts.append(tr("{0} hisse güncel").format(info['live']))
-        if info["cached"]:
-            parts.append(tr("{0} hisse önbellekten (eski fiyat)").format(info['cached']))
-        if info["failed"]:
-            parts.append(tr("fiyat alınamayan: ") + ", ".join(info["failed"]))
-        status = tr("Fiyat durumu: ") + ("; ".join(parts) if parts else tr("veri yok")) + ". "
-        self.notice.setText(status + base)
+        else:
+            self.notice.setText(base)
 
     @staticmethod
     def _signed(value: Decimal) -> str:
@@ -276,6 +301,9 @@ class BistPortfolioTab(QWidget):
                 price_text, value_text, pl_text, pct_text = "–", "–", "–", "–"
             else:
                 price_text = f"{format_tl(price)} ₺" + (" (eski)" if quote and quote.stale else "")
+                delta = self._changes.get(holding["symbol"])
+                if delta:
+                    price_text += " ▲" if delta > 0 else " ▼"
                 value_text = f"{format_tl(row['market_value'])} ₺"
                 pl_text = f"{self._signed(row['profit_loss'])} ₺"
                 pct = row["profit_loss_pct"]
@@ -302,9 +330,11 @@ class BistPortfolioTab(QWidget):
                 if column == 0:
                     item.setData(Qt.UserRole, holding["symbol"])
                 if column == 5 and quote is not None:
-                    item.setToolTip(
-                        tr("Kaynak: {0}\nFiyat zamanı: {1}").format(quote.source, quote.as_of or tr("bilinmiyor"))
-                    )
+                    tip = tr("Kaynak: {0}\nFiyat zamanı: {1}").format(quote.source, format_quote_time(quote) or tr("bilinmiyor"))
+                    delta = self._changes.get(holding["symbol"])
+                    if delta is not None and price is not None:
+                        tip += "\n" + tr("Önceki fiyat: {0}").format(format_tl(price - delta))
+                    item.setToolTip(tip)
                 if column in (7, 8):
                     brush = self._pl_color(row["profit_loss"])
                     if brush is not None:

@@ -1048,10 +1048,16 @@ class MainWindow(QWidget):
         worker.finished.connect(self._on_update_finished)
         self.update_button.setEnabled(False)
         self.last.setText(tr("Güncelleniyor..."))
+        if bist_symbols:
+            self.bist_portfolio.set_refreshing(True)
+        else:
+            self.bist_portfolio.show_no_holdings()
         worker.start()
 
     def _on_update_finished(self):
         """Release the completed QThread safely on the GUI thread."""
+        # Never leave the BIST button stuck on "Updating…", even if a provider failed.
+        self.bist_portfolio.set_refreshing(False)
         worker = self.worker
         if worker is not None:
             # QThread.finished is emitted at the end of run(); wait() also
@@ -1311,7 +1317,9 @@ class MainWindow(QWidget):
         btn.clicked.connect(save_all)
 
         def manual_update_check():
-            save_all()
+            # Checking for updates must never apply settings the user has not saved:
+            # close the dialog WITHOUT saving, then run the check.
+            dlg.reject()
             QTimer.singleShot(0, lambda: self.check_for_updates(automatic=False))
 
         update_btn.clicked.connect(manual_update_check)

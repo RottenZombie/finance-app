@@ -1,4 +1,4 @@
-name: FinanceTerminal 2.5.0 - Windows EXE
+name: FinanceTerminal 2.5.2 - Windows EXE
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build FinanceTerminal 2.5.0 Windows x64
+    name: Build FinanceTerminal 2.5.2 Windows x64
     runs-on: windows-latest
 
     steps:
@@ -65,7 +65,7 @@ jobs:
         run: |
           @"
           Application: FinanceTerminal
-          Application version: 2.5.0
+          Application version: 2.5.2
           Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
           BIST AI: included
@@ -106,12 +106,13 @@ jobs:
           Romanian leu and 8 more currencies, one global currency order: included
           Calculator with a changeable extra currency; metals output in every currency: included
           Midnight and Emerald themes: included
+          Clear BIST price-refresh feedback (progress, changes, latest trade time): included
           "@ | Set-Content -Path dist/build-info.txt -Encoding UTF8
 
       - name: Upload versioned EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FinanceTerminal-2.5.0-Windows-x64
+          name: FinanceTerminal-2.5.2-Windows-x64
           path: |
             dist/FinanceTerminal.exe
             dist/build-info.txt

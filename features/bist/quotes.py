@@ -390,6 +390,15 @@ def describe_quote(quote: Quote) -> str:
     return text + tr(" (eski fiyat)") if quote.stale else text
 
 
+def quote_time(quote: Quote) -> datetime | None:
+    """When the price was traded/recorded, for comparing quotes (None if unknown)."""
+    return _parse_iso(quote.as_of) if quote.as_of else None
+
+
+def format_quote_time(quote: Quote) -> str | None:
+    return _format_when(quote.as_of) or _format_when(quote.fetched_at)
+
+
 def fetch_bist_quotes(symbols: Iterable[object], service: QuoteService | None = None) -> dict[str, Any]:
     """Fetch quotes and return a signal-safe payload dictionary."""
     return (service or QuoteService()).fetch(symbols).to_payload()

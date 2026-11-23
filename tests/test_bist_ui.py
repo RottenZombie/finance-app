@@ -126,9 +126,56 @@ class BistUiSmokeTests(unittest.TestCase):
             tab.set_quotes(payload)
             self.assertEqual(tab.pl_value.text(), "+45,00 ₺ (+5,96 %) (kısmi)")
             self.assertTrue(tab.market_value.text().startswith("800,00 ₺ (kısmi: 1/2)"))
-            self.assertIn("THYAO", tab.notice.text())
+            self.assertIn("THYAO", tab.price_status.text())
             self.assertEqual(tab.price_map(), {"ASELS": Decimal("80.0000")})
             self.assertIn("Test", tab.price_notes()["ASELS"])
+            tab.close()
+
+    def test_price_refresh_gives_visible_feedback(self):
+        """Pressing "update prices" must show progress and what the refresh did."""
+        with tempfile.TemporaryDirectory() as temp:
+            database = BistDatabase(Path(temp) / "feedback.db")
+            database.upsert_holding("ASELS", "10", "75,50")
+            tab = BistPortfolioTab(database=database)
+            self.assertEqual(tab.price_status.text(), "Fiyatlar henüz alınmadı.")
+
+            tab.set_refreshing(True)
+            self.assertFalse(tab.refresh_prices_button.isEnabled())
+            self.assertEqual(tab.refresh_prices_button.text(), "Güncelleniyor…")
+            self.assertEqual(tab.price_status.text(), "Fiyatlar alınıyor…")
+
+            tab.set_quotes(self._quotes("ASELS"))                      # first refresh
+            self.assertTrue(tab.refresh_prices_button.isEnabled())
+            self.assertEqual(tab.refresh_prices_button.text(), "Fiyatları Güncelle")
+            self.assertIn("Son güncelleme:", tab.price_status.text())
+            self.assertNotIn("▲", tab.table.item(0, 5).text())
+
+            tab.set_quotes(self._quotes("ASELS"))                      # same price again
+            self.assertIn("0 fiyat değişti, 1 aynı kaldı", tab.price_status.text())
+            self.assertIn("piyasa kapalıysa", tab.price_status.text())
+
+            moved = self._quotes("ASELS")
+            moved["quotes"]["ASELS"]["price"] = "85"
+            tab.set_quotes(moved)                                      # price moved up
+            self.assertIn("1 fiyat değişti, 0 aynı kaldı", tab.price_status.text())
+            self.assertEqual(tab.table.item(0, 5).text(), "85,00 ₺ ▲")
+            self.assertIn("80,00", tab.table.item(0, 5).toolTip())     # previous price
+
+            moved["quotes"]["ASELS"]["price"] = "70"
+            tab.set_quotes(moved)
+            self.assertEqual(tab.table.item(0, 5).text(), "70,00 ₺ ▼")
+
+            tab.set_refreshing(False)                                  # always resets, status stays
+            self.assertTrue(tab.refresh_prices_button.isEnabled())
+            self.assertIn("Son güncelleme:", tab.price_status.text())
+            tab.close()
+
+    def test_refresh_without_holdings_says_so(self):
+        with tempfile.TemporaryDirectory() as temp:
+            tab = BistPortfolioTab(database=BistDatabase(Path(temp) / "empty.db"))
+            tab.show_no_holdings()
+            self.assertIn("hisse yok", tab.price_status.text())
+            self.assertTrue(tab.refresh_prices_button.isEnabled())
             tab.close()
 
     def test_export_choice_cancel_template_and_data(self):

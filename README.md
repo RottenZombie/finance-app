@@ -5,11 +5,11 @@
 
 [![Logo](assets/finance_terminal.png)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 
-# FinanceTerminal 2.5.0
+# FinanceTerminal 2.5.2
 
 A lightweight Windows desktop application for currency conversion and personal portfolio tracking. Built with Python and PySide6, with local SQLite storage for investment records.
 
-**Current version:** `2.5.0`  
+**Current version:** `2.5.2`  
 **Platform:** Windows x64  
 **Download:** [Latest GitHub Release](https://github.com/RottenZombie/finance-app/releases/latest)
 
@@ -194,6 +194,13 @@ Packaging tools are listed in `requirements-build.txt` (it includes `requirement
 ---
 
 ## Version history
+
+### 2.5.2
+- BIST: pressing **Fiyatları Güncelle** now gives clear feedback: the button shows "Güncelleniyor…" while prices are fetched, a status line shows the time of the last update, how many prices changed or stayed the same and the time of the latest trade (prices do not move while the exchange is closed), changed prices get a ▲/▼ marker, and failures are explained.
+
+### 2.5.1
+- Fix: **Check for Updates** in Settings no longer saves and applies unsaved changes (theme, language, ...); it closes the dialog without saving.
+- Fix: export timestamps use a numeric UTC offset (`UTC+03:00`) instead of the operating system's localised time-zone name, which leaked Turkish text into English files.
 
 ### 2.5.0
 - **Language switch:** complete Turkish and English interface selectable in Settings (previously part of the interface was English-only), including messages, dialogs, the user guide, Excel exports, currency and metal names. Excel import accepts both languages.

@@ -207,8 +207,6 @@ EN: dict[str, str] = {
         'Save portfolio as Excel',
     'Adet *':
         'Quantity *',
-    'Fiyat durumu: ':
-        'Price status: ',
     ' (kısmi)':
         ' (partial)',
     'Önce tablodan bir veya daha fazla hisse seç.':
@@ -225,8 +223,6 @@ EN: dict[str, str] = {
         'Use the "Update Prices" button to fetch current prices. ',
     'fiyat alınamayan: ':
         'price unavailable: ',
-    'veri yok':
-        'no data',
     'Kayıt yapılamadı':
         'Could not save the record',
     '{0} kaydını düzenle':
@@ -817,4 +813,17 @@ EN.update({
         "The wake-up signal could not be sent to the running application: {0}",
     "Tek uygulama kilidi alınamadı: {0}":
         "The single-instance lock could not be acquired: {0}",
+    "Fiyat alınacak hisse yok. Önce bir hisse ekleyin.": "There are no shares to fetch prices for. Add a share first.",
+    "Fiyatlar henüz alınmadı.": "Prices have not been fetched yet.",
+    "Güncelleniyor…": "Updating…",
+    "Fiyatlar alınıyor…": "Fetching prices…",
+    "Önceki fiyat: {0}": "Previous price: {0}",
+    "Fiyatlar aynı kaldı: piyasa kapalıysa veya son işlem fiyatı değişmediyse bu normaldir.":
+        "Prices are unchanged: this is normal if the market is closed or the last traded price has not moved.",
+    "Son güncelleme: {0}": "Last update: {0}",
+    "İnternet bağlantınızı kontrol edin; son bilinen fiyatlar gösteriliyor.":
+        "Check your internet connection; the last known prices are shown.",
+    "{0} fiyat değişti, {1} aynı kaldı": "{0} changed, {1} unchanged",
+    "Son işlem zamanı: {0}": "Latest trade time: {0}",
+    "Fiyat alınamadı. İnternet bağlantınızı kontrol edin.": "No price could be fetched. Check your internet connection.",
 })

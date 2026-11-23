@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+
+from core.timefmt import format_local
 import re
 import unicodedata
 
@@ -15,7 +17,7 @@ SILVER_SOURCE_URL = "https://gold-api.com/"
 
 
 def local_timestamp() -> str:
-    return datetime.now().astimezone().strftime("%d.%m.%Y %H:%M:%S %Z").strip()
+    return format_local(datetime.now())
 
 
 def profile_export_filename(profile_name: str, profile_id: str | None = None) -> str:
