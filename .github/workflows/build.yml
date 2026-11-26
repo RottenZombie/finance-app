@@ -57,6 +57,8 @@ jobs:
             --paths . `
             --collect-submodules features.bist `
             --hidden-import PySide6.QtNetwork `
+            --hidden-import cryptography.hazmat.primitives.ciphers.aead `
+            --hidden-import cryptography.exceptions `
             --add-data "assets;assets" `
             app.py
 
