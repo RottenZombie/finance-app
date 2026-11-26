@@ -1,0 +1,18 @@
+{
+  "format": "FinanceTerminal.Backup",
+  "format_version": 1,
+  "created_at": "2026-01-15T09:30:00Z",
+  "app_version": "2.6.0",
+  "platform": "windows",
+  "encrypted": true,
+  "kdf": {
+    "name": "PBKDF2-HMAC-SHA256",
+    "iterations": 600000,
+    "salt": "AAECAwQFBgcICQoLDA0ODw=="
+  },
+  "cipher": {
+    "name": "AES-256-GCM",
+    "nonce": "AAECAwQFBgcICQoL"
+  },
+  "payload": "proGqQ9KW2VVWdnOqDmEgAGucL2RLJgnA9vgwEVPDKOksteiTAy+FoWA9+wppwlL11om/if1v0RIXVJ9AgnB/1FPu5rHHQ3SN7/mJSHW7G3NkiNBFNr9a9J7T33y3bzsH5o503tEBzz9wyI0FjjMlSgqWvWY+8DiV773WTJ7wt7F7uYJ/2jgn+ondUpHwHNcAVqzE7R9MxeytxRLHz1Csxtz8uGEncYaldLCGz1zSPEeB2syF5FDpaQnAGZ5GqBZVk1TnpQ0kenSWwiYa1aGjQGn/MABc/Uz9FaM5I6p3hiL+bCmW7iMr233sHXKXmipBIwMX2VfEhkwftubEfbQGwuTIvXyVu4ToCMP/i6a86KyVqXrr9PIsN4AV0uDdNqTohF25ADd/Pvxf4rt4/PpIqQgAs1WQHFXlxTpUhoXn84/jw2Vgo1IqeCpkrcexdBree8DL7ZjqUKb8f2GjNtTnDYvG5YNHUfCKyajCzow5KQgkJ4qhTU3Lio+SbhoDIZTCTBMv9yNSkTBqJbpOo/ntpnfG01rHRwCVzIeKBnmuZGi7ofqcAMi+AM2lyU19hgD9mKTWsgJmIdItFKsnyUFhSb/M2FBtrgA4ohIzC9w3ZhNmAF5nVHehEAbrHD0a3zp4rY1EQ8+JTMXpON8ISa+EnhiIxK5TVKi3j8yw0RSkznXC46eBrgfjTJZjGsAGJpYAelBK5IH9rBZfIpGRAE2n5cdAMTwP1JQE7ZJIH4wfPOJPjST+xoeQ+TvBzKYTXcEjGFJMdpBH3fTd9bhqeMPFDP2tZHkxmck"
+}

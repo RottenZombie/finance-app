@@ -206,7 +206,7 @@ class InvestmentPanel(QGroupBox):
         code = str(self.asset_input.currentData())
         display_name, unit = self.assets[code]
         try:
-            quantity = parse_localized_decimal(self.quantity_input.text(), field_name="Miktar")
+            quantity = parse_localized_decimal(self.quantity_input.text(), field_name=tr("Miktar"))
             unit_cost = parse_localized_decimal(self.cost_input.text(), field_name=tr("Alış birim fiyatı"))
             self.store.add_purchase(
                 self.asset_group,
@@ -295,7 +295,7 @@ class InvestmentPanel(QGroupBox):
             return
 
         try:
-            quantity = parse_localized_decimal(quantity_edit.text(), field_name="Miktar")
+            quantity = parse_localized_decimal(quantity_edit.text(), field_name=tr("Miktar"))
             average_cost = parse_localized_decimal(
                 cost_edit.text(), field_name=tr("Ortalama alış fiyatı")
             )

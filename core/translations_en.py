@@ -826,4 +826,80 @@ EN.update({
     "{0} fiyat değişti, {1} aynı kaldı": "{0} changed, {1} unchanged",
     "Son işlem zamanı: {0}": "Latest trade time: {0}",
     "Fiyat alınamadı. İnternet bağlantınızı kontrol edin.": "No price could be fetched. Check your internet connection.",
+    "{0} saniye içinde otomatik olarak devam edilecek.": "Continuing automatically in {0} seconds.",
+    "Bu dosya bir FinanceTerminal yedeği değil.": "This file is not a FinanceTerminal backup.",
+    "Yedek dosyası bozuk.": "The backup file is damaged.",
+    "Bu yedek FinanceTerminal'in daha yeni bir sürümüyle oluşturulmuş. Uygulamayı güncelleyip tekrar deneyin.":
+        "This backup was created by a newer version of FinanceTerminal. Update the application and try again.",
+    "Yedek dosyasındaki veri beklenen biçimde değil.": "The data in the backup file is not in the expected format.",
+    "Şifre en az {0} karakter olmalıdır.": "The password must be at least {0} characters long.",
+    "Şifreleme bileşeni bulunamadı; şifreli yedek bu kurulumda kullanılamıyor.":
+        "The encryption component was not found; encrypted backups are not available in this installation.",
+    "Yedek dosyası bozuk (sağlama toplamı uyuşmuyor).": "The backup file is damaged (checksum mismatch).",
+    "Bu yedek şifreli; şifreyi girin.": "This backup is encrypted; enter the password.",
+    "satır okunamadı": "row could not be read",
+    "geçersiz miktar": "invalid quantity",
+    "geçersiz ortalama maliyet": "invalid average cost",
+    "Şifre yanlış ya da dosya bozulmuş.": "The password is wrong or the file is damaged.",
+    "{0} / {1}: bir satır atlandı — {2}": "{0} / {1}: a row was skipped — {2}",
+    "çok fazla kayıt (en çok {0})": "too many records (at most {0})",
+    "aynı kod birden fazla kez geçiyor: {0}": "the same code appears more than once: {0}",
+    "desteklenmeyen kod: {0}": "unsupported code: {0}",
+    "Mevcut verilerin güvenlik yedeği alınamadı: {0}": "A safety backup of the current data could not be created: {0}",
+    "Yedek geri yüklenirken bir hata oluştu: {0}\n\nGeri yüklemeden önceki verileriniz şu dosyada saklandı: {1}":
+        "An error occurred while restoring the backup: {0}\n\nYour data from before the restore was saved in this file: {1}",
+    "FinanceTerminal yedeği (*.ftbackup)": "FinanceTerminal backup (*.ftbackup)",
+    "Yedek şifresi": "Backup password",
+    "Yedek Al": "Create Backup",
+    "Yedek dosyası şifrelensin mi?": "Should the backup file be encrypted?",
+    "Şifreli Yedek": "Encrypted Backup",
+    "Şifresiz Yedek": "Unencrypted Backup",
+    "Yedeği kaydet": "Save the backup",
+    "Yedek alındı": "Backup created",
+    "Yedekten Geri Yükle": "Restore from Backup",
+    "Birleştir": "Merge",
+    "Üzerine Yaz": "Overwrite",
+    "Yedek dosyasını seçin": "Select the backup file",
+    "Geri yükleme tamamlandı": "Restore completed",
+    "Şifreyi tekrar girin:": "Enter the password again:",
+    "Şifresiz yedek, finansal verilerinizi dosyayı açan herkesin okuyabileceği biçimde içerir; güvenli bir yerde saklayın.":
+        "An unencrypted backup contains your financial data in a form anyone who opens the file can read; keep it somewhere safe.",
+    "Yedek": "Backup",
+    "Yedek kaydedildi:\n{0}\n\nProfil: {1}, döviz: {2}, maden: {3}, hisse: {4} kayıt.":
+        "Backup saved:\n{0}\n\nProfiles: {1}, currency: {2}, metals: {3}, stocks: {4} records.",
+    "Dosya şifrelidir. Şifreyi unutursanız verileriniz kurtarılamaz.":
+        "The file is encrypted. If you forget the password your data cannot be recovered.",
+    "Dosya şifresizdir ve finansal verilerinizi içerir; güvenli bir yerde saklayın.":
+        "The file is not encrypted and contains your financial data; keep it somewhere safe.",
+    "Yedekte {0} profil, {1} döviz, {2} maden ve {3} hisse kaydı var.\nOluşturulma: {4} (FinanceTerminal {5})":
+        "The backup contains {0} profiles, {1} currency, {2} metals and {3} stock records.\nCreated: {4} (FinanceTerminal {5})",
+    "Her iki durumda mevcut verileriniz önce otomatik olarak yedeklenir.":
+        "In both cases your current data is backed up automatically first.",
+    "Üzerine yazılsın mı?": "Overwrite?",
+    "Dosyadaki profillerin mevcut kayıtları silinecek ve yedektekilerle değiştirilecek. Devam edilsin mi?":
+        "The current records of the profiles in the file will be deleted and replaced with those in the backup. Do you want to continue?",
+    "Yedekte geri yüklenecek kayıt bulunamadı.": "No records to restore were found in the backup.",
+    "{0} kayıt geri yüklendi.": "{0} records were restored.",
+    "Şifreler aynı değil.": "The passwords do not match.",
+    "Şifreli yedekte şifreyi unutursanız verileriniz kurtarılamaz; şifre hiçbir yerde saklanmaz.":
+        "If you forget the password of an encrypted backup your data cannot be recovered; the password is not stored anywhere.",
+    "Yedek alınamadı": "The backup could not be created",
+    "Yedek okunamadı": "The backup could not be read",
+    "Geri yükleme başarısız": "Restore failed",
+    "Atlanan satırlar:\n": "Skipped rows:\n",
+    "Yedek şifresi (en az {0} karakter):": "Backup password (at least {0} characters):",
+    "{0} satır okunamadığı için atlanacak.": "{0} rows will be skipped because they could not be read.",
+    "Üzerine Yaz: dosyadaki profillerin kayıtları silinip dosyadakilerle değiştirilir; ortak tercihler de dosyadan alınır.":
+        "Overwrite: the records of the profiles in the file are deleted and replaced with those in the file; shared preferences are also taken from the file.",
+    "Önceki verileriniz şu dosyada saklandı:\n{0}": "Your previous data was saved in this file:\n{0}",
+    "Birleştir: dosyadaki kayıtlar eklenir ya da güncellenir; sizde olup dosyada olmayan kayıtlar korunur.":
+        "Merge: records in the file are added or updated; records you have that are not in the file are kept.",
+    "... ve {0} satır daha.": "... and {0} more rows.",
+    "Veri ve Yedekleme": "Data and Backup",
+    "Yedek dosyası (.ftbackup) tüm profillerinizi ve ortak tercihlerinizi içerir; tema ve dil gibi kişisel ayarlar yedeğe dahil değildir.":
+        "The backup file (.ftbackup) contains all your profiles and shared preferences; personal settings such as theme and language are not included.",
+    "Yedek Al…": "Create Backup…",
+    "Yedekten Geri Yükle…": "Restore from Backup…",
+    "Değişikliklerin görünmesi için uygulamanın yeniden başlatılması gerekir. Şimdi yeniden başlatılsın mı?":
+        "The application has to restart for the changes to appear. Restart now?",
 })

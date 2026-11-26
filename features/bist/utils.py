@@ -5,7 +5,7 @@ import re
 from core.i18n import tr
 
 
-def parse_localized_decimal(value: object, *, field_name: str = tr("Değer")) -> Decimal:
+def parse_localized_decimal(value: object, *, field_name: str | None = None) -> Decimal:
     """Parse common Turkish/English numeric formats into Decimal.
 
     Examples:
@@ -14,6 +14,7 @@ def parse_localized_decimal(value: object, *, field_name: str = tr("Değer")) ->
         "1,234.56" -> Decimal("1234.56")
         "1234.56"  -> Decimal("1234.56")
     """
+    field_name = field_name or tr("Değer")  # resolved per call: the language is known only at runtime
     if isinstance(value, Decimal):
         number = value
     elif value is None:

@@ -30,8 +30,9 @@ def default_database_path() -> Path:
     return data_directory() / "investment_holdings.db"
 
 
-def parse_localized_decimal(value: object, *, field_name: str = tr("Değer")) -> Decimal:
+def parse_localized_decimal(value: object, *, field_name: str | None = None) -> Decimal:
     """Parse Turkish and English decimal formats without using binary floats."""
+    field_name = field_name or tr("Değer")  # resolved per call: the language is known only at runtime
     if isinstance(value, Decimal):
         number = value
     elif value is None:
@@ -130,7 +131,7 @@ class InvestmentStore:
         code = str(asset_code).strip().upper()
         if group not in ALLOWED_ASSETS or code not in ALLOWED_ASSETS[group]:
             raise ValueError(tr("Geçersiz varlık türü veya kodu."))
-        qty = parse_localized_decimal(quantity, field_name="Miktar")
+        qty = parse_localized_decimal(quantity, field_name=tr("Miktar"))
         price = parse_localized_decimal(unit_cost_try, field_name=tr("Alış birim fiyatı"))
         if qty <= 0:
             raise ValueError(tr("Miktar sıfırdan büyük olmalıdır."))
@@ -197,7 +198,7 @@ class InvestmentStore:
         code = str(asset_code).strip().upper()
         if group not in ALLOWED_ASSETS or code not in ALLOWED_ASSETS[group]:
             raise ValueError(tr("Geçersiz varlık türü veya kodu."))
-        qty = parse_localized_decimal(quantity, field_name="Miktar")
+        qty = parse_localized_decimal(quantity, field_name=tr("Miktar"))
         average = parse_localized_decimal(average_cost_try, field_name=tr("Ortalama alış fiyatı"))
         if qty <= 0 or average <= 0:
             raise ValueError(tr("Miktar ve ortalama alış fiyatı sıfırdan büyük olmalıdır."))

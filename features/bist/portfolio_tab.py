@@ -371,7 +371,7 @@ class BistPortfolioTab(QWidget):
     def save_holding(self) -> None:
         try:
             symbol = normalize_symbol(self.symbol_input.text())
-            quantity = parse_localized_decimal(self.quantity_input.text(), field_name="Adet")
+            quantity = parse_localized_decimal(self.quantity_input.text(), field_name=tr("Adet"))
             average_cost = parse_localized_decimal(self.cost_input.text(), field_name=tr("Ortalama maliyet"))
             self.database.upsert_holding(
                 symbol=symbol,

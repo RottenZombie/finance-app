@@ -98,7 +98,7 @@ def read_investment_holdings_excel(
             try:
                 quantity_index = selected_map["quantity"]
                 cost_index = selected_map["average_cost"]
-                quantity = parse_localized_decimal(row[quantity_index] if quantity_index < len(row) else None, field_name="Miktar")
+                quantity = parse_localized_decimal(row[quantity_index] if quantity_index < len(row) else None, field_name=tr("Miktar"))
                 average_cost = parse_localized_decimal(row[cost_index] if cost_index < len(row) else None, field_name=tr("Ortalama alış fiyatı"))
                 if quantity <= 0 or average_cost <= 0:
                     raise ValueError(tr("Miktar ve ortalama alış fiyatı sıfırdan büyük olmalıdır."))

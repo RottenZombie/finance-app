@@ -5,11 +5,11 @@
 
 [![Logo](assets/finance_terminal.png)](https://github.com/RottenZombie/finance-app/tree/bist-ai-2.2.1)
 
-# FinanceTerminal 2.5.2
+# FinanceTerminal 2.6.0
 
 A lightweight Windows desktop application for currency conversion and personal portfolio tracking. Built with Python and PySide6, with local SQLite storage for investment records.
 
-**Current version:** `2.5.2`  
+**Current version:** `2.6.0`  
 **Platform:** Windows x64  
 **Download:** [Latest GitHub Release](https://github.com/RottenZombie/finance-app/releases/latest)
 
@@ -194,6 +194,16 @@ Packaging tools are listed in `requirements-build.txt` (it includes `requirement
 ---
 
 ## Version history
+
+### 2.6.0
+- **Backup and restore** (Settings → *Veri ve Yedekleme*): one `.ftbackup` file with all profiles (currency, metals, stocks), profile names and the shared preferences (decimal precision, shown currencies, calculator currency). Theme, language and other personal settings are not included. The file is language independent and uses an open, versioned format (UTF-8 JSON; optional AES-256-GCM encryption with PBKDF2-HMAC-SHA256) so the same file can later be read and written by phone apps; see `docs/DATA_FORMAT.md` and the test vectors in `docs/test-vectors/`.
+- **Optional encryption**, asked each time: encrypted backups cannot be opened without the password and the password cannot be recovered; an unencrypted option exists. Wrong passwords, damaged or tampered files, files from a newer version and files that are not backups are detected and explained.
+- **Restore** offers *Merge* (add/update records, keep the rest) or *Overwrite* (replace the records of the profiles in the file, with a second confirmation). Your current data is always saved automatically first (`%APPDATA%\FinanceTerminal\backups`, the five newest are kept). Rows that cannot be read are skipped and listed instead of stopping the restore.
+- Fix: validation messages for a missing quantity/value were partly stuck in Turkish in English mode (a translation was evaluated when the program was loaded); a test now prevents this.
+- Includes the 2.5.3 update hand-off fix below.
+
+### 2.5.3
+- Fix: automatic update no longer fails with "the application process did not close" when the "update is ready" message was not confirmed quickly. The helper that replaces the EXE (it waits about 90 seconds for the application to exit) used to start *before* that message; it now starts only after the message, right before the application closes. The message also continues by itself after a 5-second countdown.
 
 ### 2.5.2
 - BIST: pressing **Fiyatları Güncelle** now gives clear feedback: the button shows "Güncelleniyor…" while prices are fetched, a status line shows the time of the last update, how many prices changed or stayed the same and the time of the latest trade (prices do not move while the exchange is closed), changed prices get a ▲/▼ marker, and failures are explained.

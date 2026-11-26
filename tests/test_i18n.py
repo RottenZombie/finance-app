@@ -220,6 +220,39 @@ class EnglishExportTests(LanguageSwitchMixin, unittest.TestCase):
         self.assertIsNone(TURKISH_LETTERS.search(str(caught.exception)))
 
 
+class ErrorMessageLanguageTests(LanguageSwitchMixin, unittest.TestCase):
+    """Validation messages shown to the user must follow the language, defaults included."""
+
+    def test_parser_messages_are_english(self):
+        from features.bist.utils import parse_localized_decimal as bist_parse
+        from features.investment_store import parse_localized_decimal as store_parse
+
+        for parse in (bist_parse, store_parse):
+            for value, label in ((None, None), ("abc", None), ("", "Miktar")):
+                with self.assertRaises(ValueError) as caught:
+                    parse(value, field_name=tr(label)) if label else parse(value)
+                message = str(caught.exception)
+                self.assertIsNone(TURKISH_LETTERS.search(message), message)
+                self.assertNotIn("Değer", message)
+        with self.assertRaises(ValueError) as caught:
+            store_parse(None)
+        self.assertEqual(str(caught.exception), "Value cannot be empty.")
+
+    def test_quantity_labels_in_store_errors_are_english(self):
+        import tempfile
+        from pathlib import Path
+        from features.bist.database import BistDatabase
+        from features.investment_store import InvestmentStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError) as caught:
+                InvestmentStore(Path(tmp) / "a.db").add_purchase("currency", "USD", "", "3", display_name="x", unit="USD")
+            self.assertIn("Quantity", str(caught.exception))
+            with self.assertRaises(ValueError) as caught:
+                BistDatabase(Path(tmp) / "b.db").upsert_holding("ASELS", "", "3")
+            self.assertIn("Quantity", str(caught.exception))
+
+
 class CurrencyNameTests(unittest.TestCase):
     def test_names_follow_the_language(self):
         from features.currencies import currency_display_name
@@ -236,7 +269,7 @@ class NoImportTimeTranslationTests(unittest.TestCase):
     its default, so every call must sit inside a function (use tr_noop for constants).
     """
 
-    def test_tr_is_only_called_inside_functions(self):
+    def test_tr_is_only_called_inside_function_bodies(self):
         import ast
 
         root = Path(__file__).resolve().parents[1]
@@ -251,11 +284,15 @@ class NoImportTimeTranslationTests(unittest.TestCase):
                     child._parent = node
             for node in ast.walk(tree):
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "tr":
-                    cursor, inside = node, False
+                    cursor, previous, inside = node, None, False
                     while cursor is not None:
-                        cursor = getattr(cursor, "_parent", None)
-                        if isinstance(cursor, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-                            inside = True
+                        previous, cursor = cursor, getattr(cursor, "_parent", None)
+                        if isinstance(cursor, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            # Only the body runs at call time; defaults and decorators run at import.
+                            inside = previous in cursor.body
+                            break
+                        if isinstance(cursor, ast.Lambda):
+                            inside = previous is cursor.body
                             break
                     if not inside:
                         offenders.append(f"{relative}:{node.lineno}")

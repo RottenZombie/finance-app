@@ -72,7 +72,7 @@ class BistDatabase:
         notes: object = "",
     ) -> dict[str, Any]:
         ticker = normalize_symbol(symbol)
-        qty = parse_localized_decimal(quantity, field_name="Adet")
+        qty = parse_localized_decimal(quantity, field_name=tr("Adet"))
         cost = parse_localized_decimal(average_cost, field_name=tr("Ortalama maliyet"))
         if qty <= 0:
             raise ValueError(tr("Adet sıfırdan büyük olmalıdır."))
@@ -129,7 +129,7 @@ class BistDatabase:
         """
         old_ticker = normalize_symbol(original_symbol)
         new_ticker = normalize_symbol(symbol)
-        qty = parse_localized_decimal(quantity, field_name="Adet")
+        qty = parse_localized_decimal(quantity, field_name=tr("Adet"))
         cost = parse_localized_decimal(average_cost, field_name=tr("Ortalama maliyet"))
         if qty <= 0:
             raise ValueError(tr("Adet sıfırdan büyük olmalıdır."))

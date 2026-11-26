@@ -37,6 +37,8 @@ from core.resources import resource_path
 from core.version import APP_VERSION
 from core import autostart
 from core.help_text import help_html
+from core.update_flow import run_update_handoff
+from features.backup_dialogs import run_backup, run_restore
 from ui.themes import EXTRA_THEMES, build_stylesheet
 from core.app_paths import (
     set_active_profile, migrate_legacy_data_to_profile1, app_data_directory, profile_directory,
@@ -49,6 +51,9 @@ from core.updater import (
 from core.i18n import get_language, normalize_language, tr, tr_noop, translate
 from features.dialogs import ask_question, ask_warning_question, localize_dialog_buttons, localize_message_buttons
 
+
+# The "update is ready" message continues by itself after this many seconds.
+UPDATE_READY_AUTO_CONTINUE_SECONDS = 5
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -866,27 +871,64 @@ class MainWindow(QWidget):
             return
 
         downloaded = Path(payload["path"])
-        try:
-            executable = current_executable_path()
+        version = self._pending_update_release.version
+
+        def launch_helper() -> None:
+            # Started only after the user has seen the message, right before we exit.
             launch_windows_update_helper(
                 downloaded,
-                executable,
+                current_executable_path(),
                 expected_size=self._pending_update_release.asset_size,
             )
-        except Exception as exc:
+
+        def report_failure(exc: Exception) -> None:
             try:
                 downloaded.unlink(missing_ok=True)
             except OSError:
                 pass
             QMessageBox.warning(self, tr("Güncelleme başlatılamadı"), str(exc))
-            return
 
-        QMessageBox.information(
-            self, tr("Güncelleme hazır"),
-            tr("FinanceTerminal {0} indirildi ve doğrulandı. Uygulama şimdi kapanacak. Güncelleyici eski EXE'yi yedekleyip yenisini kuracak; yeni sürüm açılmazsa eski sürüm otomatik geri yüklenecek.").format(self._pending_update_release.version)
+        def exit_application() -> None:
+            self._force_exit = True
+            self.close()
+
+        run_update_handoff(
+            announce=lambda: self._show_update_ready_dialog(version),
+            launch=launch_helper,
+            on_failure=report_failure,
+            exit_app=exit_application,
         )
-        self._force_exit = True
-        self.close()
+
+    def _show_update_ready_dialog(self, version: str, seconds: int = UPDATE_READY_AUTO_CONTINUE_SECONDS) -> None:
+        """"Update ready" message that continues by itself after a short countdown."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(tr("Güncelleme hazır"))
+        base_text = tr("FinanceTerminal {0} indirildi ve doğrulandı. Uygulama şimdi kapanacak. Güncelleyici eski EXE'yi yedekleyip yenisini kuracak; yeni sürüm açılmazsa eski sürüm otomatik geri yüklenecek.").format(version)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        localize_message_buttons(box)
+
+        remaining = seconds
+        timer = QTimer(box)
+        timer.setInterval(1000)
+
+        def show_countdown() -> None:
+            box.setText(base_text + "\n\n" + tr("{0} saniye içinde otomatik olarak devam edilecek.").format(remaining))
+
+        def tick() -> None:
+            nonlocal remaining
+            remaining -= 1
+            if remaining <= 0:
+                timer.stop()
+                box.accept()
+                return
+            show_countdown()
+
+        timer.timeout.connect(tick)
+        show_countdown()
+        timer.start()
+        box.exec()
+        timer.stop()
 
     # ---------------- FORMAT ----------------
     def fmt(self, v):
@@ -1323,6 +1365,20 @@ class MainWindow(QWidget):
             QTimer.singleShot(0, lambda: self.check_for_updates(automatic=False))
 
         update_btn.clicked.connect(manual_update_check)
+
+        backup_label = QLabel(tr("Veri ve Yedekleme"))
+        backup_note = QLabel(tr("Yedek dosyası (.ftbackup) tüm profillerinizi ve ortak tercihlerinizi içerir; tema ve dil gibi kişisel ayarlar yedeğe dahil değildir."))
+        backup_note.setWordWrap(True)
+        backup_btn = QPushButton(tr("Yedek Al…"))
+        restore_btn = QPushButton(tr("Yedekten Geri Yükle…"))
+
+        def run_data_action(action):
+            # Like the update check: never apply unsaved settings, just close the dialog.
+            dlg.reject()
+            QTimer.singleShot(0, action)
+
+        backup_btn.clicked.connect(lambda: run_data_action(self.start_backup))
+        restore_btn.clicked.connect(lambda: run_data_action(self.start_restore))
         layout.addWidget(version)
         layout.addWidget(QLabel(tr("Dil")))
         layout.addWidget(language)
@@ -1342,9 +1398,41 @@ class MainWindow(QWidget):
         ))
         layout.addWidget(btn)
         layout.addWidget(update_btn)
+        layout.addWidget(backup_label)
+        layout.addWidget(backup_note)
+        layout.addWidget(backup_btn)
+        layout.addWidget(restore_btn)
         layout.addWidget(help_btn)
         dlg.setLayout(layout)
         dlg.exec()
+
+    # ---------------- BACKUP ----------------
+    def start_backup(self) -> None:
+        run_backup(self, self.settings, APP_VERSION)
+
+    def start_restore(self) -> None:
+        report = run_restore(self, self.settings, APP_VERSION)
+        if report is None:
+            return
+        self.settings.update(report.settings)
+        save(self.settings)
+        self._offer_restart_after_restore()
+
+    def _offer_restart_after_restore(self) -> None:
+        """Profiles, tables and preferences are read at startup, so restart to show the restored data."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(tr("Geri yükleme tamamlandı"))
+        box.setText(tr("Değişikliklerin görünmesi için uygulamanın yeniden başlatılması gerekir. Şimdi yeniden başlatılsın mı?"))
+        restart_button = box.addButton(tr("Şimdi Yeniden Başlat"), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(tr("Daha Sonra"), QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(restart_button)
+        box.exec()
+        if box.clickedButton() is restart_button and not self.restart_application():
+            QMessageBox.warning(
+                self, tr("Geri yükleme tamamlandı"),
+                tr("Uygulama yeniden başlatılamadı. Lütfen FinanceTerminal'ı kapatıp elle yeniden açın."),
+            )
 
     # ---------------- LANGUAGE ----------------
     def _offer_restart_for_language(self, language: str) -> None:
