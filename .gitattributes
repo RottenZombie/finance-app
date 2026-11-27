@@ -1,0 +1,4 @@
+# Backup files and their published test vectors must stay byte-for-byte identical on
+# every platform. Without this, Git on Windows rewrites their line endings (LF -> CRLF).
+*.ftbackup -text
+docs/test-vectors/* -text

@@ -161,7 +161,21 @@ class GoldenVectorTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         for name, data in module.generate().items():
-            self.assertEqual((ROOT / "docs" / "test-vectors" / name).read_bytes(), data, name)
+            on_disk = (ROOT / "docs" / "test-vectors" / name).read_bytes()
+            # Git for Windows may check the files out with CRLF line endings
+            # (.gitattributes prevents it, but the test must not depend on that).
+            self.assertEqual(on_disk.replace(b"\r\n", b"\n"), data, name)
+
+    def test_readers_accept_files_whose_line_endings_were_converted(self):
+        folder = ROOT / "docs" / "test-vectors"
+        for name, password in (("plain.ftbackup", None), ("encrypted.ftbackup", "Şifre-123-ığüİ")):
+            crlf = (folder / name).read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+            self.assertEqual(backup.read_backup(crlf, password)[1]["profiles"][0]["name"], "Ana Profil", name)
+
+    def test_gitattributes_keeps_backup_files_byte_exact(self):
+        text = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        self.assertIn("*.ftbackup -text", text)
+        self.assertIn("docs/test-vectors/* -text", text)
 
     def test_the_specification_document_states_the_same_test_vector_parameters(self):
         """Keeps docs/DATA_FORMAT.md from drifting away from the code."""
@@ -399,8 +413,11 @@ class DataRoundTripTests(unittest.TestCase):
         report = backup_data.apply_backup(clean, backup_data.REPLACE, self.settings, app_version="1", data_root=local)
         self.assertEqual(report.total_imported, 3)
         self.assertEqual(self.rows(local), self.rows(self.root))
+        # A folder can never be created below a regular file, on any operating system.
+        blocker = self.root / "a-file"
+        blocker.write_text("x", encoding="utf-8")
         with self.assertRaises(BackupError) as caught:
-            backup_data.apply_backup(clean, backup_data.REPLACE, self.settings, app_version="1", data_root=Path("/proc/nonexistent/x"))
+            backup_data.apply_backup(clean, backup_data.REPLACE, self.settings, app_version="1", data_root=blocker / "sub")
         self.assertNotRegex(str(caught.exception), r"[çğıöşüÇĞİÖŞÜ]{2}")
 
 
